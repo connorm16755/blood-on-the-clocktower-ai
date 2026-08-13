@@ -7,7 +7,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
 ## Tasks
 
 - [ ] 1. Set up project structure and data models
-  - [ ] 1.1 Create project directory structure and configuration files
+  - [x] 1.1 Create project directory structure and configuration files
     - Create the Python package structure: `game_engine/`, `ai_agents/`, `ai_agents/llm/`, `role_registry/`, `api/`, `models/`, `frontend/`, `data/roles/trouble_brewing/`, `data/scripts/`, `tests/property/`, `tests/unit/`, `tests/integration/`
     - Create `pyproject.toml` or `requirements.txt` with dependencies: fastapi, uvicorn, sse-starlette, pyyaml, pydantic, httpx, hypothesis, pytest
     - Create `__init__.py` files for all packages
@@ -45,7 +45,17 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Validate all required fields are present when loading role data, raise `RoleDataError` on malformed files
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.8, 8.2_
 
-  - [ ]* 2.4 Write property test for Role Distribution Correctness (Property 1)
+  - [ ] 2.4 Write unit tests for RoleRegistry
+    - Test `get_role` returns correct RoleDefinition for each Trouble Brewing role
+    - Test `get_role` raises error for unknown role names
+    - Test `get_script` loads Trouble Brewing with all 9 roles
+    - Test `get_script` raises `ScriptNotFoundError` for unknown scripts
+    - Test `get_roles_for_player_count` returns correct distribution for 5, 6, and 7 players
+    - Test `select_roles` returns the right number of each role type
+    - Test malformed YAML raises `RoleDataError` on load
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+
+  - [ ]* 2.5 Write property test for Role Distribution Correctness (Property 1)
     - **Property 1: Role Distribution Correctness**
     - Test that for any valid script and player count (5-7), selected roles match the distribution table exactly with no duplicates and one role per player
     - **Validates: Requirements 1.2, 1.3, 7.4**
@@ -69,7 +79,19 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Distribute evil team knowledge: Minions learn Demon identity, Demon learns Minion identities
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
 
-  - [ ]* 3.2 Write property test for Evil Team Knowledge Symmetry (Property 2)
+  - [ ] 3.2 Write unit tests for game creation and role assignment
+    - Test `create_game` produces correct player count for 5, 6, and 7
+    - Test exactly one player is marked `is_human`
+    - Test each player has a unique role assigned
+    - Test role distribution matches the script's table for the given player count
+    - Test Minion players receive Demon identity in their character sheet
+    - Test Demon player receives all Minion identities in their character sheet
+    - Test Townsfolk/Outsider players receive no evil team knowledge
+    - Test invalid player count (4 or 8) raises `InvalidPlayerCountError`
+    - Test invalid script name raises `ScriptNotFoundError`
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
+
+  - [ ]* 3.3 Write property test for Evil Team Knowledge Symmetry (Property 2)
     - **Property 2: Evil Team Knowledge Symmetry**
     - Test that every Minion knows the Demon's identity and the Demon knows all Minion identities
     - **Validates: Requirements 1.6, 1.7**
@@ -97,7 +119,21 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Handle poisoned players by providing potentially false information
     - _Requirements: 2.2, 2.4, 11.2_
 
-  - [ ]* 3.6 Write property tests for Night Phase (Properties 4, 5, 6)
+  - [ ] 3.6 Write unit tests for Night Phase
+    - Test `begin_night_phase` transitions game phase to NIGHT
+    - Test `get_night_order` returns correct order for first night vs other nights
+    - Test `get_night_order` skips dead players
+    - Test Demon kill marks target as DEAD
+    - Test targeting a dead player has no effect
+    - Test `complete_night_phase` returns NightSummary with dead player IDs only (no cause)
+    - Test Washerwoman receives correct first-night info (two players, one of whom is a specific Townsfolk)
+    - Test Librarian receives correct first-night info
+    - Test Investigator receives correct first-night info
+    - Test Chef receives correct evil-neighbor count
+    - Test Empath receives correct alive-evil-neighbor count
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
+
+  - [ ]* 3.7 Write property tests for Night Phase (Properties 4, 5, 6)
     - **Property 4: Night Order Preservation** — Test night abilities processed in script-defined order, skipping dead players
     - **Property 5: Demon Kill Resolution** — Test target dies after night resolution, summary reveals only identity
     - **Property 6: First Night Information Distribution** — Test info-gathering roles receive data on night 1
@@ -111,7 +147,19 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Limit to one execution per day
     - _Requirements: 3.1, 4.1, 4.2, 4.3, 4.4, 4.5, 14.2_
 
-  - [ ]* 3.8 Write property tests for Day Phase and Voting (Properties 7, 8, 9)
+  - [ ] 3.9 Write unit tests for Day Phase, Nomination, and Voting
+    - Test `begin_day_phase` transitions game phase to DAY
+    - Test `nominate` succeeds when nominator and target are alive, no execution yet
+    - Test `nominate` rejects dead nominator
+    - Test `nominate` rejects dead target
+    - Test `nominate` rejects when execution already occurred today
+    - Test `cast_vote` records for/against correctly
+    - Test `resolve_nomination` executes target when votes > N/2
+    - Test `resolve_nomination` does not execute when votes <= N/2
+    - Test at most one execution per day (second successful nomination rejected)
+    - _Requirements: 3.1, 4.1, 4.2, 4.3, 4.4, 4.5_
+
+  - [ ]* 3.10 Write property tests for Day Phase and Voting (Properties 7, 8, 9)
     - **Property 7: Living Players Discussion Access** — Only living players can send messages
     - **Property 8: Nomination Validity** — Nomination accepted iff nominator alive, target alive, no execution today
     - **Property 9: Majority Vote Execution** — Execution iff votes > N/2
@@ -124,7 +172,15 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Return `GameResult` with winning team, reason, and role reveals
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ]* 3.10 Write property tests for Win Conditions (Properties 10, 11)
+  - [ ] 3.11 Write unit tests for Win Condition Detection
+    - Test Good wins when Demon is executed
+    - Test Evil wins when 2 players remain and Demon is alive
+    - Test no win when 3+ players remain
+    - Test no win when Demon dies at night but 3+ players remain (Imp starpass scenario)
+    - Test GameResult includes correct winning team, reason, and role reveals
+    - _Requirements: 5.1, 5.2, 5.3_
+
+  - [ ]* 3.12 Write property tests for Win Conditions (Properties 10, 11)
     - **Property 10: Good Victory on Demon Execution** — Demon executed → Good wins
     - **Property 11: Evil Victory at Two Players** — 2 alive with Demon → Evil wins
     - **Validates: Requirements 5.1, 5.2**
@@ -137,7 +193,15 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Poisoned player's information-gathering abilities return potentially false results
     - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
-  - [ ]* 4.2 Write property tests for Poisoner (Properties 14, 15)
+  - [ ] 4.2 Write unit tests for Poisoner
+    - Test Poisoner can select a living target and that target becomes poisoned
+    - Test previous poison is cleared at start of new night
+    - Test dead Poisoner's action is skipped
+    - Test poisoned Washerwoman receives potentially false info
+    - Test poisoned Empath receives potentially incorrect count
+    - _Requirements: 11.1, 11.2, 11.3, 11.4_
+
+  - [ ]* 4.3 Write property tests for Poisoner (Properties 14, 15)
     - **Property 14: Poison Effect on Information** — Poisoned info-gathering roles get unreliable info
     - **Property 15: Poison Lifecycle Reset** — Poison cleared between consecutive nights
     - **Validates: Requirements 11.2, 11.3**
@@ -149,7 +213,15 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Mark ability as used (`used_ability = True`), reject further uses
     - _Requirements: 12.1, 12.2, 12.3, 12.4_
 
-  - [ ]* 4.4 Write property test for Slayer (Property 16)
+  - [ ] 4.5 Write unit tests for Slayer
+    - Test Slayer targeting Demon kills the Demon
+    - Test Slayer targeting non-Demon announces nothing happens, target stays alive
+    - Test Slayer ability marked as used after one use
+    - Test second Slayer use is rejected with AbilityExhaustedError
+    - Test Slayer kill triggers win condition check
+    - _Requirements: 12.1, 12.2, 12.3, 12.4_
+
+  - [ ]* 4.6 Write property test for Slayer (Property 16)
     - **Property 16: Slayer Ability Correctness**
     - Test Slayer kills Demon only, one-shot enforcement
     - **Validates: Requirements 12.1, 12.2, 12.3, 12.4**
@@ -161,7 +233,15 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Update promoted player's role, abilities, and night order position
     - _Requirements: 13.1, 13.2, 13.3, 13.4_
 
-  - [ ]* 4.6 Write property test for Imp Starpass (Property 17)
+  - [ ] 4.8 Write unit tests for Imp Starpass
+    - Test Imp self-targeting kills the Imp
+    - Test Imp self-kill with living Minion promotes that Minion to Imp
+    - Test promoted Minion has Imp role and abilities after starpass
+    - Test Imp self-kill with no living Minion results in normal death, no promotion
+    - Test starpass does not trigger Good victory (new Demon exists)
+    - _Requirements: 13.1, 13.2, 13.3, 13.4_
+
+  - [ ]* 4.9 Write property test for Imp Starpass (Property 17)
     - **Property 17: Imp Starpass Mechanic**
     - Test self-kill promotes exactly one Minion when available, no promotion otherwise
     - **Validates: Requirements 13.1, 13.2, 13.3**
@@ -173,7 +253,16 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Reject self-selection as master with `InvalidTargetError`
     - _Requirements: 14.1, 14.2, 14.3, 14.4_
 
-  - [ ]* 4.8 Write property tests for Butler (Properties 18, 19)
+  - [ ] 4.11 Write unit tests for Butler
+    - Test Butler can select a living player (not self) as master
+    - Test Butler cannot select themselves as master
+    - Test Butler's master choice resets each night
+    - Test Butler can vote when master votes in favor
+    - Test Butler cannot vote when master votes against
+    - Test Butler vote restriction only applies to voting in favor (can always abstain)
+    - _Requirements: 14.1, 14.2, 14.3, 14.4_
+
+  - [ ]* 4.12 Write property tests for Butler (Properties 18, 19)
     - **Property 18: Butler Voting Restriction** — Butler votes only if master votes in favor
     - **Property 19: Butler Master Selection Validity** — Must be living, not self, reset nightly
     - **Validates: Requirements 14.1, 14.2, 14.3, 14.4**
@@ -240,7 +329,19 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Wire up error handling: 400 for invalid actions, 403 for dead players, 404 for missing games, 409 for conflicts
     - _Requirements: 10.4, 8.5, 9.1_
 
-  - [ ] 8.2 Implement SSE event streaming
+  - [ ] 8.2 Write unit tests for API endpoints
+    - Test `POST /game` creates a game and returns correct response schema
+    - Test `POST /game` with invalid player count returns 400
+    - Test `POST /game` with unknown script returns 404
+    - Test `GET /game/{game_id}` returns filtered state (no other players' roles visible)
+    - Test `GET /game/{game_id}` with unknown ID returns 404
+    - Test `POST /game/{game_id}/action` with valid message action returns success
+    - Test `POST /game/{game_id}/action` from dead player returns 403
+    - Test `POST /game/{game_id}/action` with invalid action type returns 400
+    - Test `GET /scripts` returns list of available scripts
+    - _Requirements: 10.4, 8.5_
+
+  - [ ] 8.3 Implement SSE event streaming
     - Implement `GET /game/{game_id}/events` as an SSE endpoint using `sse-starlette`
     - Create an event queue system that pushes game state changes to connected clients
     - Event types: `phase_change`, `message`, `nomination`, `vote`, `death`, `game_end`, `night_prompt`
@@ -315,18 +416,18 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     { "id": 0, "tasks": ["1.1"] },
     { "id": 1, "tasks": ["1.2", "1.3", "2.1", "2.2"] },
     { "id": 2, "tasks": ["2.3"] },
-    { "id": 3, "tasks": ["2.4", "2.5", "2.6", "3.1"] },
+    { "id": 3, "tasks": ["2.4", "2.5", "2.6", "2.7", "3.1"] },
     { "id": 4, "tasks": ["3.2", "3.3", "3.4", "3.5"] },
-    { "id": 5, "tasks": ["3.6", "3.7", "3.9"] },
-    { "id": 6, "tasks": ["3.8", "3.10", "4.1", "4.3", "4.5", "4.7"] },
-    { "id": 7, "tasks": ["4.2", "4.4", "4.6", "4.8"] },
+    { "id": 5, "tasks": ["3.6", "3.7", "3.8", "3.11"] },
+    { "id": 6, "tasks": ["3.9", "3.10", "3.12", "4.1", "4.4", "4.7", "4.10"] },
+    { "id": 7, "tasks": ["4.2", "4.3", "4.5", "4.6", "4.8", "4.9", "4.11", "4.12"] },
     { "id": 8, "tasks": ["6.1"] },
     { "id": 9, "tasks": ["6.2", "7.1"] },
     { "id": 10, "tasks": ["7.2"] },
     { "id": 11, "tasks": ["7.3"] },
     { "id": 12, "tasks": ["7.4"] },
-    { "id": 13, "tasks": ["8.1", "8.2"] },
-    { "id": 14, "tasks": ["8.3"] },
+    { "id": 13, "tasks": ["8.1", "8.2", "8.3"] },
+    { "id": 14, "tasks": ["8.4"] },
     { "id": 15, "tasks": ["9.1"] },
     { "id": 16, "tasks": ["9.2"] },
     { "id": 17, "tasks": ["11.1"] },
