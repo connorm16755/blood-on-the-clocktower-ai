@@ -13,14 +13,14 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Create `__init__.py` files for all packages
     - _Requirements: 8.1_
 
-  - [ ] 1.2 Implement core data models
+  - [-] 1.2 Implement core data models
     - Create `models/game.py` with enums: `GamePhase`, `Team`, `RoleType`, `PlayerStatus`
     - Create dataclasses: `RoleDefinition`, `Player`, `Grimoire`, `GameSession`, `GameResult`
     - Create `models/actions.py` with: `NightAction`, `NightActionResult`, `NightSummary`, `Message`, `Nomination`, `VoteContext`
     - Create `models/ai.py` with: `Personality`, `BeliefState`, `Claim`, `DiscussionContext`
     - _Requirements: 7.2, 10.1_
 
-  - [ ] 1.3 Create API request/response schemas
+  - [x] 1.3 Create API request/response schemas
     - Create `api/schemas.py` with Pydantic models: `CreateGameRequest`, `CreateGameResponse`, `PlayerActionRequest`, `GameStateResponse`, `GameEvent`, `ScriptSummary`, `ScriptDetail`
     - Validate player_count is between 5 and 7 in `CreateGameRequest`
     - _Requirements: 10.4, 1.4_
