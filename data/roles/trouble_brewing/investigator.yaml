@@ -1,0 +1,19 @@
+name: "Investigator"
+role_type: "townsfolk"
+team: "good"
+ability_description: "You start knowing that 1 of 2 players is a particular Minion."
+first_night_order: 4
+other_nights_order: null
+setup_requirements:
+  count: 1
+  always_present: false
+information_provided: "You learn that one of two players is a specific Minion role."
+game_rules:
+  - "The Investigator receives information on the first night only"
+  - "One of the two shown players is the stated Minion; the other is not"
+  - "If poisoned, the information may be incorrect"
+night_action:
+  type: "info_gather"
+  targets: 0
+  valid_targets: null
+  information_format: "player_a_or_player_b_is_role"

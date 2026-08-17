@@ -1,0 +1,35 @@
+# Trouble Brewing - the introductory Blood on the Clocktower script
+name: "Trouble Brewing"
+description: "A straightforward Demon-hunt with misinformation tricks."
+roles:
+  townsfolk:
+    - Washerwoman
+    - Librarian
+    - Investigator
+    - Chef
+    - Empath
+    - Slayer
+  outsiders:
+    - Butler
+  minions:
+    - Poisoner
+  demons:
+    - Imp
+distribution:
+  5: { townsfolk: 3, outsiders: 0, minions: 1, demons: 1 }
+  6: { townsfolk: 3, outsiders: 1, minions: 1, demons: 1 }
+  7: { townsfolk: 5, outsiders: 0, minions: 1, demons: 1 }
+night_order:
+  first_night:
+    - Poisoner
+    - Washerwoman
+    - Librarian
+    - Investigator
+    - Chef
+    - Empath
+    - Butler
+  other_nights:
+    - Poisoner
+    - Imp
+    - Empath
+    - Butler

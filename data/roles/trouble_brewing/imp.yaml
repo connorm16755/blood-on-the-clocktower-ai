@@ -1,0 +1,18 @@
+name: "Imp"
+role_type: "demon"
+team: "evil"
+ability_description: "Each night (except the first), choose a player: they die. If you kill yourself this way, a Minion becomes the Imp."
+first_night_order: null
+other_nights_order: 2
+setup_requirements:
+  count: 1
+  always_present: true
+information_provided: "You know who the Minions are."
+game_rules:
+  - "If the Imp kills themselves, a living Minion becomes the new Imp"
+  - "If no living Minion exists, the Imp simply dies"
+night_action:
+  type: "kill"
+  targets: 1
+  valid_targets: "any_living_player_including_self"
+  self_target_effect: "starpass"

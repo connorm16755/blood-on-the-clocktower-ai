@@ -1,0 +1,20 @@
+name: "Butler"
+role_type: "outsider"
+team: "good"
+ability_description: "Each night, choose a player (not yourself): tomorrow, you may only vote if they are voting too."
+first_night_order: 7
+other_nights_order: 4
+setup_requirements:
+  count: 1
+  always_present: false
+information_provided: "No information. You choose a master each night."
+game_rules:
+  - "The Butler must choose a living player other than themselves as their master each night"
+  - "During the day, the Butler may only vote if their chosen master also votes in favor"
+  - "The master choice resets each night and a new master must be selected"
+  - "The Butler cannot choose themselves as master"
+night_action:
+  type: "choose_master"
+  targets: 1
+  valid_targets: "any_living_player_excluding_self"
+  self_target_effect: null

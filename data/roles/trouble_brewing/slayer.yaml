@@ -1,0 +1,16 @@
+name: "Slayer"
+role_type: "townsfolk"
+team: "good"
+ability_description: "Once per game, during the day, publicly choose a player: if they are the Demon, they die."
+first_night_order: null
+other_nights_order: null
+setup_requirements:
+  count: 1
+  always_present: false
+information_provided: "No night information. You have a once-per-game day ability."
+game_rules:
+  - "The Slayer may use their ability once per game during the day"
+  - "If the Slayer targets the Demon, the Demon dies immediately"
+  - "If the Slayer targets a non-Demon player, nothing happens"
+  - "After use, the ability is exhausted regardless of the result"
+night_action: null

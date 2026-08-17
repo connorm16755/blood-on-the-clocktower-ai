@@ -1,0 +1,19 @@
+name: "Chef"
+role_type: "townsfolk"
+team: "good"
+ability_description: "You start knowing how many pairs of evil players are neighbours."
+first_night_order: 5
+other_nights_order: null
+setup_requirements:
+  count: 1
+  always_present: false
+information_provided: "You learn the number of pairs of evil players sitting next to each other."
+game_rules:
+  - "The Chef receives information on the first night only"
+  - "Evil pairs are counted by adjacency in the seating order"
+  - "If poisoned, the information may be incorrect"
+night_action:
+  type: "info_gather"
+  targets: 0
+  valid_targets: null
+  information_format: "evil_pair_count"

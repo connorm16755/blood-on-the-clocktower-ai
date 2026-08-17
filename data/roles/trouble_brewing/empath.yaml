@@ -1,0 +1,20 @@
+name: "Empath"
+role_type: "townsfolk"
+team: "good"
+ability_description: "Each night, you learn how many of your 2 alive neighbours are evil."
+first_night_order: 6
+other_nights_order: 3
+setup_requirements:
+  count: 1
+  always_present: false
+information_provided: "You learn how many of your alive neighbours are evil (0, 1, or 2)."
+game_rules:
+  - "The Empath receives information every night including the first"
+  - "Neighbours are the closest alive players on either side in seating order"
+  - "Dead players are skipped when determining neighbours"
+  - "If poisoned, the information may be incorrect"
+night_action:
+  type: "info_gather"
+  targets: 0
+  valid_targets: null
+  information_format: "evil_neighbour_count"

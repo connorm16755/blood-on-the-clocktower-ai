@@ -1,0 +1,20 @@
+name: "Poisoner"
+role_type: "minion"
+team: "evil"
+ability_description: "Each night, choose a player: they are poisoned tonight and tomorrow day."
+first_night_order: 1
+other_nights_order: 1
+setup_requirements:
+  count: 1
+  always_present: false
+information_provided: "You know who the Demon is."
+game_rules:
+  - "The Poisoner selects a target each night"
+  - "The poisoned player's ability malfunctions tonight and tomorrow"
+  - "Previous poison is cleared at the start of each night before the Poisoner acts"
+  - "If the Poisoner is dead, their night action is skipped"
+night_action:
+  type: "poison"
+  targets: 1
+  valid_targets: "any_living_player"
+  self_target_effect: null
