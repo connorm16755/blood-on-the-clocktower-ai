@@ -89,9 +89,9 @@ class TestRoleDistribution:
 class TestEvilKnowledge:
     """Tests for evil team knowledge distribution."""
 
-    def test_minion_receives_demon_identity(self, engine: GameEngine):
-        """Test that Minion players receive the Demon's identity in evil_knowledge."""
-        session = engine.create_game("trouble_brewing", 5, "Human")
+    def test_minion_receives_demon_identity_7_players(self, engine: GameEngine):
+        """Test that Minion players receive the Demon's identity in 7-player games."""
+        session = engine.create_game("trouble_brewing", 7, "Human")
         players = session.grimoire.players
 
         demon = next(p for p in players if p.role.role_type == RoleType.DEMON)
@@ -101,9 +101,9 @@ class TestEvilKnowledge:
             assert "demon_id" in minion.evil_knowledge
             assert minion.evil_knowledge["demon_id"] == demon.id
 
-    def test_demon_receives_all_minion_identities(self, engine: GameEngine):
-        """Test that the Demon player receives all Minion identities in evil_knowledge."""
-        session = engine.create_game("trouble_brewing", 5, "Human")
+    def test_demon_receives_all_minion_identities_7_players(self, engine: GameEngine):
+        """Test that the Demon player receives all Minion identities in 7-player games."""
+        session = engine.create_game("trouble_brewing", 7, "Human")
         players = session.grimoire.players
 
         demon = next(p for p in players if p.role.role_type == RoleType.DEMON)
@@ -115,9 +115,57 @@ class TestEvilKnowledge:
         for minion in minions:
             assert minion.id in minion_ids
 
+    def test_no_evil_knowledge_5_players(self, engine: GameEngine):
+        """Test that no evil knowledge is distributed in 5-player games."""
+        session = engine.create_game("trouble_brewing", 5, "Human")
+        players = session.grimoire.players
+
+        evil_players = [
+            p for p in players
+            if p.role and p.role.role_type in (RoleType.DEMON, RoleType.MINION)
+        ]
+        for player in evil_players:
+            assert player.evil_knowledge == {}, (
+                f"{player.role.name} should have no evil_knowledge in 5-player game"
+            )
+
+    def test_no_evil_knowledge_6_players(self, engine: GameEngine):
+        """Test that no evil knowledge is distributed in 6-player games."""
+        session = engine.create_game("trouble_brewing", 6, "Human")
+        players = session.grimoire.players
+
+        evil_players = [
+            p for p in players
+            if p.role and p.role.role_type in (RoleType.DEMON, RoleType.MINION)
+        ]
+        for player in evil_players:
+            assert player.evil_knowledge == {}, (
+                f"{player.role.name} should have no evil_knowledge in 6-player game"
+            )
+
+    def test_demon_receives_bluffs_7_players(self, engine: GameEngine):
+        """Test that Demon receives bluffs (not-in-play good characters) in 7-player games."""
+        session = engine.create_game("trouble_brewing", 7, "Human")
+        players = session.grimoire.players
+
+        demon = next(p for p in players if p.role.role_type == RoleType.DEMON)
+
+        assert "bluffs" in demon.evil_knowledge
+        bluffs = demon.evil_knowledge["bluffs"]
+        assert isinstance(bluffs, list)
+        assert len(bluffs) >= 1  # At least some bluffs available
+
+        # Bluffs should be good-aligned role names NOT assigned to any player
+        assigned_role_names = {p.role.name for p in players if p.role}
+        for bluff in bluffs:
+            assert isinstance(bluff, str)
+            assert bluff not in assigned_role_names, (
+                f"Bluff '{bluff}' is assigned to a player — should be not-in-play"
+            )
+
     def test_townsfolk_receive_no_evil_knowledge(self, engine: GameEngine):
         """Test that Townsfolk players receive no evil team knowledge."""
-        session = engine.create_game("trouble_brewing", 5, "Human")
+        session = engine.create_game("trouble_brewing", 7, "Human")
         players = session.grimoire.players
 
         townsfolk = [p for p in players if p.role.role_type == RoleType.TOWNSFOLK]

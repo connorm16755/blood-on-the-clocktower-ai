@@ -19,3 +19,12 @@ class InvalidTargetError(Exception):
 
 class NominationError(Exception):
     """Raised when a nomination is invalid (e.g., already executed today, nomination not found)."""
+
+
+class NominationLimitError(Exception):
+    """Raised when a nomination violates per-day limits.
+
+    This includes:
+    - A player attempting to nominate more than once per day
+    - A player being nominated more than once per day
+    """

@@ -70,7 +70,8 @@ class Player:
     is_human: bool = False
     is_poisoned: bool = False
     used_ability: bool = False  # For one-shot abilities like Slayer
-    evil_knowledge: dict = field(default_factory=dict)  # Evil team info: {"demon_id": ...} or {"minion_ids": [...]}
+    has_vote_token: bool = False  # Dead players receive one vote token upon death
+    evil_knowledge: dict = field(default_factory=dict)  # Evil team info: {"demon_id": ...} or {"minion_ids": [...], "bluffs": [...]}
 
 
 @dataclass
@@ -86,6 +87,10 @@ class Grimoire:
     execution_today: bool = False
     messages: list[Message] = field(default_factory=list)
     night_deaths: list[str] = field(default_factory=list)  # player_ids
+    about_to_die_player_id: Optional[str] = None  # Nominee with most qualifying votes this day
+    about_to_die_votes: int = 0  # Vote count for the about_to_die player
+    nominators_today: list[str] = field(default_factory=list)  # player_ids who have nominated today
+    nominees_today: list[str] = field(default_factory=list)  # player_ids who have been nominated today
 
 
 @dataclass

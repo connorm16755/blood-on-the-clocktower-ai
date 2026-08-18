@@ -23,6 +23,7 @@ from models.game import (
     Team,
 )
 from role_registry.registry import RoleRegistry
+from role_registry.models import Script
 
 # AI agent name pool for generating unique player names
 _AI_NAMES = [
@@ -112,8 +113,8 @@ class GameEngine:
             night_number=0,
         )
 
-        # 6. Distribute evil team knowledge
-        self._distribute_evil_knowledge(players)
+        # 6. Distribute evil team knowledge (conditional on player count)
+        self._distribute_evil_knowledge(players, player_count, script)
 
         # 7. Create and return the GameSession
         session = GameSession(
@@ -147,15 +148,28 @@ class GameEngine:
         players = [human] + ai_players
         return players
 
-    def _distribute_evil_knowledge(self, players: list[Player]) -> None:
+    def _distribute_evil_knowledge(
+        self, players: list[Player], player_count: int, script: Script
+    ) -> None:
         """Distribute evil team knowledge to Minions and Demons.
 
-        Minions learn the Demon's identity.
-        Demons learn all Minion identities.
+        In games with 7+ players:
+        - Minions learn the Demon's identity.
+        - Demons learn all Minion identities and receive 3 Demon Bluffs
+          (not-in-play good characters from the script).
+
+        In games with fewer than 7 players:
+        - No evil team knowledge is distributed.
 
         Args:
             players: All players in the game with roles already assigned.
+            player_count: Total number of players in the game.
+            script: The Script object for looking up available good roles.
         """
+        # In smaller games, evil team members don't learn each other's identities
+        if player_count < 7:
+            return
+
         # Find evil team members
         demons = [p for p in players if p.role and p.role.role_type == RoleType.DEMON]
         minions = [p for p in players if p.role and p.role.role_type == RoleType.MINION]
@@ -165,10 +179,29 @@ class GameEngine:
         for minion in minions:
             minion.evil_knowledge = {"demon_id": demon_ids[0] if demon_ids else None}
 
-        # Demon learns Minion identities
+        # Compute Demon Bluffs: 3 not-in-play good characters from the script
+        # Get all good role names from the script (townsfolk + outsiders)
+        good_role_names = list(script.roles.get("townsfolk", []))
+        good_role_names += list(script.roles.get("outsiders", []))
+
+        # Determine which roles are assigned to players in this game
+        assigned_role_names = {
+            p.role.name for p in players if p.role is not None
+        }
+
+        # Filter to not-in-play good characters
+        not_in_play_good = [
+            name for name in good_role_names if name not in assigned_role_names
+        ]
+
+        # Select 3 random bluffs (or fewer if not enough available)
+        bluff_count = min(3, len(not_in_play_good))
+        bluffs = random.sample(not_in_play_good, bluff_count)
+
+        # Demon learns Minion identities + bluffs
         minion_ids = [m.id for m in minions]
         for demon in demons:
-            demon.evil_knowledge = {"minion_ids": minion_ids}
+            demon.evil_knowledge = {"minion_ids": minion_ids, "bluffs": bluffs}
 
     def begin_night_phase(self, session: GameSession) -> None:
         """Transition the game to night phase and prepare for night actions.

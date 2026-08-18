@@ -66,7 +66,8 @@ def test_good_players_have_no_evil_knowledge(player_count: int) -> None:
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_evil_knowledge_contains_ids_not_roles(player_count: int) -> None:
     """Evil players' evil_knowledge contains only player IDs (strings), never
-    role definitions or role names of other team members."""
+    role definitions or role names of other team members.
+    In games with <7 players, evil_knowledge should be empty."""
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -78,6 +79,14 @@ def test_evil_knowledge_contains_ids_not_roles(player_count: int) -> None:
     ]
 
     for player in evil_players:
+        # In <7 player games, evil players get no knowledge
+        if player_count < 7:
+            assert player.evil_knowledge == {}, (
+                f"Evil player {player.name} should have empty evil_knowledge "
+                f"in {player_count}-player game"
+            )
+            continue
+
         if player.role.role_type == RoleType.MINION:
             # Minions know the demon's ID only
             assert "demon_id" in player.evil_knowledge, (
@@ -99,7 +108,7 @@ def test_evil_knowledge_contains_ids_not_roles(player_count: int) -> None:
             )
 
         elif player.role.role_type == RoleType.DEMON:
-            # Demons know minion IDs only
+            # Demons know minion IDs and bluffs
             assert "minion_ids" in player.evil_knowledge, (
                 f"Demon {player.name} missing 'minion_ids' in evil_knowledge"
             )
@@ -112,6 +121,16 @@ def test_evil_knowledge_contains_ids_not_roles(player_count: int) -> None:
                 assert isinstance(mid, str), (
                     f"Demon {player.name} has non-string in minion_ids: {type(mid)}"
                 )
+            # Bluffs are role names (strings) but are not player role reveals
+            if "bluffs" in player.evil_knowledge:
+                bluffs = player.evil_knowledge["bluffs"]
+                assert isinstance(bluffs, list), (
+                    f"Demon {player.name}'s bluffs is not a list: {type(bluffs)}"
+                )
+                for bluff in bluffs:
+                    assert isinstance(bluff, str), (
+                        f"Demon {player.name} has non-string bluff: {type(bluff)}"
+                    )
             # Verify no role information leaked
             assert "role" not in player.evil_knowledge, (
                 f"Demon {player.name} has 'role' key in evil_knowledge — "
