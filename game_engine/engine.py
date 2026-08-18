@@ -5,8 +5,14 @@ from __future__ import annotations
 import random
 from typing import Optional
 
-from game_engine.exceptions import InvalidPhaseError, InvalidPlayerCountError
-from models.actions import NightAction, NightActionResult, NightSummary
+from game_engine.exceptions import (
+    DeadPlayerActionError,
+    InvalidPhaseError,
+    InvalidPlayerCountError,
+    InvalidTargetError,
+    NominationError,
+)
+from models.actions import NightAction, NightActionResult, Nomination, NightSummary
 from models.game import (
     GamePhase,
     GameSession,
@@ -319,6 +325,210 @@ class GameEngine:
         self._pending_night_kills = []
 
         return NightSummary(deaths=deaths, night_number=grimoire.night_number)
+
+    def begin_day_phase(self, session: GameSession) -> None:
+        """Transition the game to day phase and reset daily state.
+
+        Transitions the grimoire phase to DAY, increments day_number,
+        resets nominations_today to an empty list, and sets execution_today
+        to False.
+
+        Args:
+            session: The current game session.
+
+        Raises:
+            InvalidPhaseError: If the game is in the ENDED phase.
+        """
+        grimoire = session.grimoire
+
+        if grimoire.phase == GamePhase.ENDED:
+            raise InvalidPhaseError(
+                "Cannot begin day phase: game has ended."
+            )
+
+        # Transition to day
+        grimoire.phase = GamePhase.DAY
+        grimoire.day_number += 1
+
+        # Reset daily state
+        grimoire.nominations_today = []
+        grimoire.execution_today = False
+
+    def nominate(
+        self, session: GameSession, nominator_id: str, target_id: str
+    ) -> Nomination:
+        """Process a nomination for execution.
+
+        Validates that the game is in the DAY phase, the nominator is alive,
+        the target is alive, and no execution has occurred today.
+
+        Args:
+            session: The current game session.
+            nominator_id: The ID of the player making the nomination.
+            target_id: The ID of the player being nominated.
+
+        Returns:
+            The created Nomination object.
+
+        Raises:
+            InvalidPhaseError: If the game is not in DAY phase.
+            DeadPlayerActionError: If the nominator is dead.
+            InvalidTargetError: If the target is dead.
+            NominationError: If an execution has already occurred today.
+        """
+        grimoire = session.grimoire
+
+        # Validate phase
+        if grimoire.phase != GamePhase.DAY:
+            raise InvalidPhaseError(
+                "Nominations can only be made during the day phase."
+            )
+
+        # Validate no execution has occurred today
+        if grimoire.execution_today:
+            raise NominationError(
+                "An execution has already occurred today. No more nominations allowed."
+            )
+
+        # Validate nominator is alive
+        nominator = self._find_player(grimoire, nominator_id)
+        if nominator is None:
+            raise DeadPlayerActionError(
+                f"Nominator with id '{nominator_id}' not found."
+            )
+        if nominator.status != PlayerStatus.ALIVE:
+            raise DeadPlayerActionError(
+                "Dead players cannot nominate."
+            )
+
+        # Validate target is alive
+        target = self._find_player(grimoire, target_id)
+        if target is None:
+            raise InvalidTargetError(
+                f"Target with id '{target_id}' not found."
+            )
+        if target.status != PlayerStatus.ALIVE:
+            raise InvalidTargetError(
+                "Cannot nominate a dead player."
+            )
+
+        # Create and register the nomination
+        nomination = Nomination(
+            nominator_id=nominator_id,
+            target_id=target_id,
+        )
+        grimoire.nominations_today.append(nomination)
+
+        return nomination
+
+    def cast_vote(
+        self, session: GameSession, voter_id: str, nomination_id: str, vote: bool
+    ) -> None:
+        """Record a player's vote on an active nomination.
+
+        Finds the nomination by ID, validates the voter, and enforces the
+        Butler voting restriction: the Butler can only vote True if their
+        master has already voted True on this nomination.
+
+        Args:
+            session: The current game session.
+            voter_id: The ID of the player casting the vote.
+            nomination_id: The ID of the nomination being voted on.
+            vote: True for voting in favor, False for voting against.
+
+        Raises:
+            NominationError: If the nomination is not found.
+            InvalidTargetError: If the Butler attempts to vote True without
+                their master voting True first.
+        """
+        grimoire = session.grimoire
+
+        # Find the nomination
+        nomination = None
+        for nom in grimoire.nominations_today:
+            if nom.id == nomination_id:
+                nomination = nom
+                break
+
+        if nomination is None:
+            raise NominationError(
+                f"Nomination with id '{nomination_id}' not found."
+            )
+
+        # Find the voter
+        voter = self._find_player(grimoire, voter_id)
+        if voter is None:
+            raise NominationError(
+                f"Voter with id '{voter_id}' not found."
+            )
+
+        # Enforce Butler voting restriction
+        if vote and voter.role and voter.role.name.lower() == "butler":
+            master_id = grimoire.butler_master_id
+            if master_id is None or master_id not in nomination.votes_for:
+                raise InvalidTargetError(
+                    "The Butler can only vote in favor if their master has also voted in favor."
+                )
+
+        # Record the vote
+        if vote:
+            nomination.votes_for.append(voter_id)
+        else:
+            nomination.votes_against.append(voter_id)
+
+    def resolve_nomination(
+        self, session: GameSession, nomination_id: str
+    ) -> bool:
+        """Tally votes and determine if execution occurs.
+
+        Counts votes in favor against a strict majority of living players.
+        If the majority is met, the target is executed (status set to DEAD)
+        and execution_today is set to True.
+
+        Args:
+            session: The current game session.
+            nomination_id: The ID of the nomination to resolve.
+
+        Returns:
+            True if the target was executed, False otherwise.
+
+        Raises:
+            NominationError: If the nomination is not found.
+        """
+        grimoire = session.grimoire
+
+        # Find the nomination
+        nomination = None
+        for nom in grimoire.nominations_today:
+            if nom.id == nomination_id:
+                nomination = nom
+                break
+
+        if nomination is None:
+            raise NominationError(
+                f"Nomination with id '{nomination_id}' not found."
+            )
+
+        # Count living players
+        living_players = [
+            p for p in grimoire.players if p.status == PlayerStatus.ALIVE
+        ]
+        living_count = len(living_players)
+
+        # Check strict majority: votes_for > living_count / 2
+        votes_for_count = len(nomination.votes_for)
+        execution_occurs = votes_for_count > living_count / 2
+
+        if execution_occurs:
+            # Execute the target
+            target = self._find_player(grimoire, nomination.target_id)
+            if target:
+                target.status = PlayerStatus.DEAD
+            grimoire.execution_today = True
+            nomination.succeeded = True
+
+        nomination.resolved = True
+        return execution_occurs
 
     def _find_player(
         self, grimoire: Grimoire, player_id: str
