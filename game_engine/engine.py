@@ -5,12 +5,14 @@ from __future__ import annotations
 import random
 from typing import Optional
 
-from game_engine.exceptions import InvalidPlayerCountError
+from game_engine.exceptions import InvalidPhaseError, InvalidPlayerCountError
+from models.actions import NightAction, NightActionResult, NightSummary
 from models.game import (
     GamePhase,
     GameSession,
     Grimoire,
     Player,
+    PlayerStatus,
     RoleType,
     Team,
 )
@@ -51,6 +53,7 @@ class GameEngine:
             registry: A RoleRegistry instance. If None, creates a default one.
         """
         self._registry = registry or RoleRegistry()
+        self._pending_night_kills: list[str] = []
 
     def create_game(
         self, script_name: str, player_count: int, human_player_name: str
@@ -160,3 +163,176 @@ class GameEngine:
         minion_ids = [m.id for m in minions]
         for demon in demons:
             demon.evil_knowledge = {"minion_ids": minion_ids}
+
+    def begin_night_phase(self, session: GameSession) -> None:
+        """Transition the game to night phase and prepare for night actions.
+
+        Transitions the grimoire phase to NIGHT, increments night_number,
+        clears previous night deaths, and clears poison from all players.
+
+        Args:
+            session: The current game session.
+
+        Raises:
+            InvalidPhaseError: If the game is in the ENDED phase.
+        """
+        grimoire = session.grimoire
+
+        if grimoire.phase == GamePhase.ENDED:
+            raise InvalidPhaseError(
+                "Cannot begin night phase: game has ended."
+            )
+
+        # Transition to night
+        grimoire.phase = GamePhase.NIGHT
+        grimoire.night_number += 1
+
+        # Clear previous night deaths
+        grimoire.night_deaths = []
+
+        # Clear poison from all players (poison resets each night)
+        for player in grimoire.players:
+            player.is_poisoned = False
+
+        # Clear pending kills from previous night
+        self._pending_night_kills = []
+
+    def get_night_order(
+        self, session: GameSession, is_first_night: bool
+    ) -> list[str]:
+        """Return ordered list of player_ids who act this night.
+
+        Gets the script's night_order for first_night or other_nights,
+        maps role names to living players, and returns their player_ids
+        in the defined order.
+
+        Args:
+            session: The current game session.
+            is_first_night: True for first night order, False for other nights.
+
+        Returns:
+            Ordered list of player_ids for living players who act this night.
+        """
+        script = self._registry.get_script(session.script_name)
+
+        order_key = "first_night" if is_first_night else "other_nights"
+        night_order = script.night_order.get(order_key, [])
+
+        # Build a mapping from role name (lowercase) to living player
+        role_to_player: dict[str, Player] = {}
+        for player in session.grimoire.players:
+            if player.status == PlayerStatus.ALIVE and player.role:
+                role_to_player[player.role.name.lower()] = player
+
+        # Map role names in order to player_ids, skipping dead players
+        ordered_player_ids: list[str] = []
+        for role_name in night_order:
+            player = role_to_player.get(role_name.lower())
+            if player is not None:
+                ordered_player_ids.append(player.id)
+
+        return ordered_player_ids
+
+    def resolve_night_action(
+        self, session: GameSession, player_id: str, action: NightAction
+    ) -> NightActionResult:
+        """Process a single night action and update game state.
+
+        If the acting player is dead, the action is a no-op.
+        For "kill" actions (Demon): adds the target to pending deaths.
+        For "poison" actions (Poisoner): sets target's is_poisoned flag.
+        For "choose_master" actions (Butler): stores the butler's master choice.
+
+        Args:
+            session: The current game session.
+            player_id: The player performing the action.
+            action: The NightAction to resolve.
+
+        Returns:
+            NightActionResult indicating success or failure.
+        """
+        grimoire = session.grimoire
+
+        # Find the acting player
+        acting_player = self._find_player(grimoire, player_id)
+        if acting_player is None:
+            return NightActionResult(player_id=player_id, success=False)
+
+        # Dead players' actions are no-ops
+        if acting_player.status == PlayerStatus.DEAD:
+            return NightActionResult(player_id=player_id, success=False)
+
+        action_type = action.action_type
+
+        if action_type == "kill":
+            # Demon kill: add target to pending deaths (resolved at end of night)
+            if action.target_id:
+                target = self._find_player(grimoire, action.target_id)
+                if target and target.status == PlayerStatus.ALIVE:
+                    self._pending_night_kills.append(action.target_id)
+            return NightActionResult(player_id=player_id, success=True)
+
+        elif action_type == "poison":
+            # Poisoner: set target's is_poisoned flag
+            if action.target_id:
+                target = self._find_player(grimoire, action.target_id)
+                if target and target.status == PlayerStatus.ALIVE:
+                    target.is_poisoned = True
+            return NightActionResult(player_id=player_id, success=True)
+
+        elif action_type == "choose_master":
+            # Butler: store master choice on the grimoire
+            if action.target_id:
+                grimoire.butler_master_id = action.target_id
+            return NightActionResult(player_id=player_id, success=True)
+
+        # Unknown action type - still return success for extensibility
+        return NightActionResult(player_id=player_id, success=True)
+
+    def complete_night_phase(self, session: GameSession) -> NightSummary:
+        """Finalize all night actions, apply deaths, and produce a NightSummary.
+
+        Applies pending night kills by setting target players' status to DEAD,
+        stores the dead player ids in grimoire.night_deaths, and returns
+        a NightSummary with the list of deaths and night number.
+
+        Args:
+            session: The current game session.
+
+        Returns:
+            NightSummary with deaths list and night_number.
+        """
+        grimoire = session.grimoire
+        deaths: list[str] = []
+
+        # Apply pending kills
+        for target_id in self._pending_night_kills:
+            target = self._find_player(grimoire, target_id)
+            if target and target.status == PlayerStatus.ALIVE:
+                target.status = PlayerStatus.DEAD
+                deaths.append(target_id)
+
+        # Store deaths in grimoire
+        grimoire.night_deaths = deaths
+
+        # Clear pending kills
+        self._pending_night_kills = []
+
+        return NightSummary(deaths=deaths, night_number=grimoire.night_number)
+
+    def _find_player(
+        self, grimoire: Grimoire, player_id: str
+    ) -> Optional[Player]:
+        """Find a player in the grimoire by their ID.
+
+        Args:
+            grimoire: The game grimoire containing all players.
+            player_id: The ID of the player to find.
+
+        Returns:
+            The Player if found, None otherwise.
+        """
+        for player in grimoire.players:
+            if player.id == player_id:
+                return player
+        return None

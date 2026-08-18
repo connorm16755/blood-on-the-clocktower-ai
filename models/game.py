@@ -81,6 +81,7 @@ class Grimoire:
     phase: GamePhase
     day_number: int
     night_number: int
+    butler_master_id: Optional[str] = None  # Who the Butler chose as master
     nominations_today: list[Nomination] = field(default_factory=list)
     execution_today: bool = False
     messages: list[Message] = field(default_factory=list)
