@@ -71,7 +71,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - **Validates: Requirements 7.4**
 
 - [ ] 3. Implement Game Engine core
-  - [ ] 3.1 Implement game creation and role assignment
+  - [x] 3.1 Implement game creation and role assignment
     - Create `game_engine/engine.py` with `GameEngine` class
     - Implement `create_game(script_name, player_count, human_player_name)` that uses `RoleRegistry` to select and randomly assign roles
     - Create `Player` objects for the human player and AI agents
@@ -79,7 +79,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Distribute evil team knowledge: Minions learn Demon identity, Demon learns Minion identities
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
 
-  - [ ] 3.2 Write unit tests for game creation and role assignment
+  - [x] 3.2 Write unit tests for game creation and role assignment
     - Test `create_game` produces correct player count for 5, 6, and 7
     - Test exactly one player is marked `is_human`
     - Test each player has a unique role assigned
@@ -91,17 +91,17 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Test invalid script name raises `ScriptNotFoundError`
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
 
-  - [ ]* 3.3 Write property test for Evil Team Knowledge Symmetry (Property 2)
+  - [x] 3.3 Write property test for Evil Team Knowledge Symmetry (Property 2)
     - **Property 2: Evil Team Knowledge Symmetry**
     - Test that every Minion knows the Demon's identity and the Demon knows all Minion identities
     - **Validates: Requirements 1.6, 1.7**
 
-  - [ ]* 3.3 Write property test for Information Isolation (Property 3)
+  - [x] 3.3 Write property test for Information Isolation (Property 3)
     - **Property 3: Information Isolation**
     - Test that no player can access another player's private role through the information system
     - **Validates: Requirements 1.5, 2.2, 7.6**
 
-  - [ ] 3.4 Implement Night Phase processing
+  - [x] 3.4 Implement Night Phase processing
     - Implement `begin_night_phase(session)` to transition game to night, prepare night action queue
     - Implement `get_night_order(session, is_first_night)` to return ordered player_ids based on script night order, skipping dead players
     - Implement `resolve_night_action(session, player_id, action)` to process individual night actions and update state
@@ -109,7 +109,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Handle: Demon kill marks target as dead, Poisoner sets target's is_poisoned flag, dead player actions are no-ops
     - _Requirements: 2.1, 2.3, 2.5, 2.6_
 
-  - [ ] 3.5 Implement first night information distribution
+  - [x] 3.5 Implement first night information distribution
     - Implement `generate_info_for_role(session, player_id)` in a Storyteller helper
     - For Washerwoman: provide one Townsfolk player and one other player, one of whom is the specified role
     - For Librarian: provide one Outsider player and one other player, one of whom is the specified role
@@ -119,7 +119,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Handle poisoned players by providing potentially false information
     - _Requirements: 2.2, 2.4, 11.2_
 
-  - [ ] 3.6 Write unit tests for Night Phase
+  - [x] 3.6 Write unit tests for Night Phase
     - Test `begin_night_phase` transitions game phase to NIGHT
     - Test `get_night_order` returns correct order for first night vs other nights
     - Test `get_night_order` skips dead players
@@ -133,7 +133,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Test Empath receives correct alive-evil-neighbor count
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-  - [ ]* 3.7 Write property tests for Night Phase (Properties 4, 5, 6)
+  - [x] 3.7 Write property tests for Night Phase (Properties 4, 5, 6)
     - **Property 4: Night Order Preservation** — Test night abilities processed in script-defined order, skipping dead players
     - **Property 5: Demon Kill Resolution** — Test target dies after night resolution, summary reveals only identity
     - **Property 6: First Night Information Distribution** — Test info-gathering roles receive data on night 1
