@@ -12,6 +12,15 @@ The architecture separates concerns into three primary layers:
 
 The system is designed for extensibility: roles are data-driven (JSON/YAML), scripts compose roles into playable configurations, and the LLM provider is behind an interface so models can be swapped without engine changes.
 
+Key game mechanics faithfully implemented from official rules:
+- **Conditional evil knowledge**: In games with 7+ players, evil team members know each other; in smaller games they do not. The Demon also receives 3 "bluff" characters (not-in-play good roles) to assist deception.
+- **Day discussion**: All players (alive and dead) participate in discussion.
+- **Vote tokens**: Dead players receive one vote token upon death, usable in exactly one future nomination vote.
+- **Nomination limits**: Each alive player may nominate at most once per day; each player may be nominated at most once per day.
+- **About-to-die tracking**: Multiple nominations occur per day; the nominee with the most qualifying votes (at or above threshold) is marked "about to die" and executed at end of day. Ties result in no execution.
+- **Execution threshold**: Votes must be at least half the alive player count (rounded up), not strict majority.
+- **Poison lifts on Poisoner death**: If the Poisoner dies at any point, their active poison immediately ends.
+
 ## Architecture
 
 ### High-Level System Architecture
@@ -114,7 +123,13 @@ class GameEngine:
     """Central orchestrator for game state and rule enforcement."""
     
     def create_game(self, script_name: str, player_count: int, human_player_name: str) -> GameSession:
-        """Initialize a new game session with role assignment."""
+        """Initialize a new game session with role assignment.
+        
+        Selects roles from the script, assigns them randomly, and distributes
+        evil team knowledge conditionally:
+        - 7+ players: Minions learn Demon ID, Demon learns Minion IDs + 3 Demon_Bluffs
+        - <7 players: No evil team knowledge distributed
+        """
         ...
     
     def begin_night_phase(self, session: GameSession) -> NightPhaseContext:
@@ -122,27 +137,65 @@ class GameEngine:
         ...
     
     def resolve_night_action(self, session: GameSession, player_id: str, action: NightAction) -> NightActionResult:
-        """Process a single night action and update state."""
+        """Process a single night action and update state.
+        
+        If the Poisoner dies (any cause), immediately lifts active poison.
+        """
         ...
     
     def complete_night_phase(self, session: GameSession) -> NightSummary:
-        """Finalize all night actions, announce deaths."""
+        """Finalize all night actions, announce deaths.
+        
+        When marking players as dead, grants them a Vote_Token.
+        If the dying player is the Poisoner, immediately lifts any active poison.
+        """
         ...
     
     def begin_day_phase(self, session: GameSession) -> DayPhaseContext:
-        """Transition to day phase, enable discussion."""
+        """Transition to day phase, enable discussion.
+        
+        Resets daily nomination tracking: nominators_today, nominees_today,
+        about_to_die_player_id, about_to_die_votes. All players (alive and dead)
+        may participate in discussion.
+        """
         ...
     
     def nominate(self, session: GameSession, nominator_id: str, target_id: str) -> Nomination:
-        """Process a nomination for execution."""
+        """Process a nomination for execution.
+        
+        Validates:
+        - Only alive players may nominate
+        - Each alive player may nominate at most once per day
+        - Each player (alive or dead) may be nominated at most once per day
+        """
         ...
     
     def cast_vote(self, session: GameSession, voter_id: str, nomination_id: str, vote: bool) -> VoteResult:
-        """Record a player's vote on active nomination."""
+        """Record a player's vote on active nomination.
+        
+        Eligible voters: all alive players + dead players who still have their Vote_Token.
+        Dead players who use their token have it spent permanently.
+        Butler voting restriction still applies.
+        """
         ...
     
     def resolve_nomination(self, session: GameSession, nomination_id: str) -> NominationResult:
-        """Tally votes and determine if execution occurs."""
+        """Tally votes and update about_to_die tracking.
+        
+        Threshold: votes >= ceil(alive_count / 2).
+        If votes meet threshold AND exceed current about_to_die_votes,
+        update about_to_die_player_id. Does NOT execute immediately.
+        If tied with current about_to_die, clears about_to_die (no execution).
+        """
+        ...
+    
+    def end_day_phase(self, session: GameSession) -> Optional[str]:
+        """Execute the about_to_die player at end of day.
+        
+        If about_to_die_player_id is set, executes that player (marks as DEAD,
+        grants Vote_Token). Returns the executed player_id or None.
+        If Poisoner is executed, immediately lifts active poison.
+        """
         ...
     
     def use_day_ability(self, session: GameSession, player_id: str, target_id: str) -> DayAbilityResult:
@@ -168,7 +221,12 @@ class Storyteller:
         ...
     
     async def run_day_phase(self, session: GameSession) -> DaySummary:
-        """Manage discussion rounds, nominations, voting."""
+        """Manage discussion rounds, nominations, voting.
+        
+        All players (alive and dead) participate in discussion.
+        Multiple nominations may occur. At day's end, the about_to_die
+        player is executed (if any).
+        """
         ...
     
     def get_night_order(self, session: GameSession, is_first_night: bool) -> list[str]:
@@ -429,6 +487,8 @@ class Player:
     is_human: bool = False
     is_poisoned: bool = False
     used_ability: bool = False  # For one-shot abilities like Slayer
+    has_vote_token: bool = False  # Dead players receive one vote token upon death
+    evil_knowledge: dict = field(default_factory=dict)  # {"demon_id": ...} or {"minion_ids": [...], "bluffs": [...]}
 
 @dataclass
 class Grimoire:
@@ -437,12 +497,15 @@ class Grimoire:
     phase: GamePhase
     day_number: int
     night_number: int
-    poisoned_player_id: Optional[str] = None
     butler_master_id: Optional[str] = None  # Who the Butler chose
     nominations_today: list["Nomination"] = field(default_factory=list)
-    execution_today: bool = False
+    execution_today: bool = False  # Tracks whether an execution occurred at end of day
     messages: list["Message"] = field(default_factory=list)
     night_deaths: list[str] = field(default_factory=list)  # player_ids
+    about_to_die_player_id: Optional[str] = None  # Nominee with most qualifying votes this day
+    about_to_die_votes: int = 0  # Vote count for the about_to_die player
+    nominators_today: list[str] = field(default_factory=list)  # player_ids who have nominated today
+    nominees_today: list[str] = field(default_factory=list)  # player_ids who have been nominated today
 
 @dataclass
 class GameSession:
@@ -660,11 +723,11 @@ class GameEvent(BaseModel):
 
 **Validates: Requirements 1.2, 1.3, 7.4**
 
-### Property 2: Evil Team Knowledge Symmetry
+### Property 2: Conditional Evil Team Knowledge
 
-*For any* game setup, every Minion player SHALL know the identity of the Demon, and the Demon player SHALL know the identities of all Minion players.
+*For any* game setup with 7 or more players, every Minion player SHALL know the identity of the Demon, and the Demon player SHALL know the identities of all Minion players. *For any* game setup with fewer than 7 players, no evil team knowledge SHALL be distributed — Minions SHALL NOT learn the Demon's identity and the Demon SHALL NOT learn Minion identities.
 
-**Validates: Requirements 1.6, 1.7**
+**Validates: Requirements 1.6, 1.7, 1.8**
 
 ### Property 3: Information Isolation
 
@@ -690,23 +753,23 @@ class GameEvent(BaseModel):
 
 **Validates: Requirements 2.4**
 
-### Property 7: Living Players Discussion Access
+### Property 7: All Players Discussion Access
 
-*For any* day phase, every living player SHALL be able to send messages, and no dead player SHALL be able to send messages.
+*For any* day phase, every player (both alive and dead) SHALL be able to send messages to the shared discussion.
 
-**Validates: Requirements 3.1**
+**Validates: Requirements 3.1, 3.3**
 
-### Property 8: Nomination Validity
+### Property 8: Nomination Validity with Per-Day Limits
 
-*For any* day phase, a nomination SHALL be accepted if and only if the nominator is alive, the target is alive, and no execution has occurred that day.
+*For any* day phase, a nomination SHALL be accepted if and only if: the nominator is alive, the nominator has not already nominated today, and the target has not already been nominated today. Dead players SHALL NOT be able to nominate.
 
-**Validates: Requirements 4.1, 4.5**
+**Validates: Requirements 4.1**
 
-### Property 9: Majority Vote Execution
+### Property 9: Execution Threshold and About-To-Die Tracking
 
-*For any* nomination vote with N living players, the nomination SHALL succeed if and only if the number of votes in favor is strictly greater than N/2. When a nomination succeeds, the target player's status SHALL become DEAD.
+*For any* nomination vote with N alive players, the execution threshold SHALL be ceil(N/2) (at least half the alive players, rounded up). When a nominee receives votes at or above this threshold AND more votes than the current about_to_die player, they SHALL become the new about_to_die player. Execution SHALL occur only at the end of the day phase. If two or more nominees are tied for the highest qualifying votes, no execution SHALL occur.
 
-**Validates: Requirements 4.3, 4.4**
+**Validates: Requirements 4.3, 4.4, 4.5, 4.6, 4.7, 4.8**
 
 ### Property 10: Good Victory on Demon Execution
 
@@ -738,11 +801,11 @@ class GameEvent(BaseModel):
 
 **Validates: Requirements 11.2**
 
-### Property 15: Poison Lifecycle Reset
+### Property 15: Poison Lifecycle Reset and Death Lift
 
-*For any* pair of consecutive nights, the previous night's poison SHALL be cleared before the Poisoner selects a new target in the current night.
+*For any* pair of consecutive nights, the previous night's poison SHALL be cleared before the Poisoner selects a new target in the current night. Additionally, *for any* game state where the Poisoner dies (by any cause), any currently active poison SHALL be immediately lifted from the affected player at the moment of the Poisoner's death.
 
-**Validates: Requirements 11.3**
+**Validates: Requirements 11.3, 11.5**
 
 ### Property 16: Slayer Ability Correctness
 
@@ -770,9 +833,21 @@ class GameEvent(BaseModel):
 
 ### Property 20: Grimoire State Completeness
 
-*For any* point during a game session, the Grimoire SHALL contain all players with their current status, the current phase, accumulated messages, night deaths, and all other game state necessary to fully reconstruct the game position.
+*For any* point during a game session, the Grimoire SHALL contain all players with their current status, the current phase, accumulated messages, night deaths, about_to_die tracking, nomination history, and all other game state necessary to fully reconstruct the game position.
 
 **Validates: Requirements 10.1**
+
+### Property 21: Vote Token Mechanics
+
+*For any* player who dies (by any cause), the Game Engine SHALL grant that player a Vote_Token. *For any* dead player with a Vote_Token who votes in a nomination, the token SHALL be spent and that player SHALL be permanently unable to vote in any future nomination. *For any* dead player without a Vote_Token, the Game Engine SHALL reject their vote.
+
+**Validates: Requirements 4.10, 4.11, 4.12**
+
+### Property 22: Demon Bluffs
+
+*For any* game setup with 7 or more players, the Demon SHALL receive exactly 3 not-in-play good character names from the Script as Demon_Bluffs. Each bluff character SHALL be a good-aligned role that exists in the Script but is not assigned to any player in the game.
+
+**Validates: Requirements 1.9**
 
 
 
@@ -786,8 +861,10 @@ class GameEvent(BaseModel):
 | Invalid script name (not found) | Raise `ScriptNotFoundError`. Return 404 from API. |
 | Night action targets dead player | Silently treat as no-op. Log warning. Return success with no effect. |
 | Nomination during non-day phase | Raise `InvalidPhaseError`. Return 400 from API. |
-| Dead player attempts action | Raise `DeadPlayerActionError`. Return 403 from API. |
-| Second execution same day | Reject nomination. Return error indicating execution already occurred. |
+| Player already nominated today | Raise `NominationLimitError`. Return 400 with message "Player has already nominated today." |
+| Target already nominated today | Raise `NominationLimitError`. Return 400 with message "Target has already been nominated today." |
+| Dead player attempts to nominate | Raise `DeadPlayerActionError`. Return 403 from API. |
+| Dead player without Vote_Token attempts to vote | Raise `DeadPlayerActionError`. Return 403 with message "No vote token available." |
 | Butler self-select as master | Raise `InvalidTargetError`. Re-prompt for valid target. |
 | Slayer uses exhausted ability | Raise `AbilityExhaustedError`. Return 400 with explanation. |
 | Imp starpass with no living Minion | Process as normal death, no promotion. Log event. |
@@ -843,25 +920,27 @@ Each correctness property maps to a single property-based test:
 | Property | Test Focus | Key Generators |
 |---|---|---|
 | 1: Role Distribution | Role selection matches distribution table | Random player counts (5-7), random scripts |
-| 2: Evil Team Knowledge | Minions know Demon, Demon knows Minions | Random game setups |
+| 2: Conditional Evil Knowledge | Minions know Demon, Demon knows Minions (7+ players only); no knowledge (<7 players) | Random game setups with varying player counts |
 | 3: Information Isolation | No private info leaks to other players | Random game states, random player pairs |
 | 4: Night Order | Actions processed in defined order | Random sets of living roles |
 | 5: Demon Kill | Target dies unless protected | Random living targets, random protection states |
 | 6: First Night Info | Info roles receive data on night 1 | Random game setups with info roles |
-| 7: Discussion Access | Only living players send messages | Random game states with mixed alive/dead |
-| 8: Nomination Validity | Only valid nominations accepted | Random nominators, targets, day states |
-| 9: Majority Vote | Execution iff votes > N/2 | Random vote distributions, player counts |
+| 7: All Players Discussion | All players (alive and dead) can send messages | Random game states with mixed alive/dead |
+| 8: Nomination Validity | Nominator alive, once per day per player, target once per day | Random nominators, targets, nomination histories |
+| 9: Execution Threshold & About-To-Die | Threshold >= ceil(N/2), about_to_die tracking, end-of-day execution, tie handling | Random vote distributions, multiple nominations per day |
 | 10: Good Victory | Demon execution → Good wins | Random game states with demon executed |
 | 11: Evil Victory | 2 players left with Demon → Evil wins | Random game states at 2 players |
 | 12: Role Definition Completeness | All fields present | All loaded role definitions |
 | 13: Script Containment | Assigned roles from script | Random games, verify role membership |
 | 14: Poison Info | Poisoned players get unreliable info | Random poisoned info-gathering roles |
-| 15: Poison Reset | Poison cleared between nights | Random consecutive night sequences |
+| 15: Poison Reset & Death Lift | Poison cleared between nights; poison lifts on Poisoner death | Random consecutive nights, Poisoner death scenarios |
 | 16: Slayer Ability | Kills Demon only, one-shot | Random targets (Demon/non-Demon), used states |
 | 17: Imp Starpass | Self-kill promotes Minion | Random Minion presence/absence |
 | 18: Butler Vote | Butler restricted by master's vote | Random vote scenarios with Butler |
 | 19: Butler Master | Valid selection, reset nightly | Random living player sets |
 | 20: Grimoire Completeness | All state present after transitions | Random action sequences |
+| 21: Vote Token Mechanics | Token granted on death, spent on use, rejected without token | Random death/vote sequences with dead players |
+| 22: Demon Bluffs | 3 not-in-play good characters given to Demon (7+ players) | Random 7-player game setups |
 
 ### Unit Test Coverage
 
@@ -888,11 +967,15 @@ tests/
 │   ├── test_night_phase.py
 │   ├── test_day_phase.py
 │   ├── test_voting.py
+│   ├── test_vote_tokens.py
+│   ├── test_nomination_limits.py
 │   ├── test_win_conditions.py
 │   ├── test_poisoner.py
 │   ├── test_slayer.py
 │   ├── test_imp.py
 │   ├── test_butler.py
+│   ├── test_evil_knowledge.py
+│   ├── test_demon_bluffs.py
 │   └── test_data_models.py
 ├── unit/                  # Example-based unit tests
 │   ├── test_game_engine.py

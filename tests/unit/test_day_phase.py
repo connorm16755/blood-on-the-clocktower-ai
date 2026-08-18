@@ -6,9 +6,9 @@ from game_engine.engine import GameEngine
 from game_engine.exceptions import (
     DeadPlayerActionError,
     InvalidTargetError,
-    NominationError,
+    NominationLimitError,
 )
-from models.game import GamePhase, PlayerStatus
+from models.game import GamePhase, PlayerStatus, RoleType
 
 
 @pytest.fixture(scope="module")
@@ -37,12 +37,28 @@ class TestBeginDayPhase:
         engine.begin_day_phase(session)
         assert session.grimoire.phase == GamePhase.DAY
 
+    def test_begin_day_phase_resets_nominators_today(self, engine: GameEngine):
+        """Test that begin_day_phase resets nominators_today to empty."""
+        session = _create_day_session(engine)
+        assert session.grimoire.nominators_today == []
+
+    def test_begin_day_phase_resets_nominees_today(self, engine: GameEngine):
+        """Test that begin_day_phase resets nominees_today to empty."""
+        session = _create_day_session(engine)
+        assert session.grimoire.nominees_today == []
+
+    def test_begin_day_phase_resets_about_to_die(self, engine: GameEngine):
+        """Test that begin_day_phase resets about_to_die tracking."""
+        session = _create_day_session(engine)
+        assert session.grimoire.about_to_die_player_id is None
+        assert session.grimoire.about_to_die_votes == 0
+
 
 class TestNominateSuccess:
     """Tests for successful nominations."""
 
-    def test_nominate_succeeds_when_both_alive_no_execution(self, engine: GameEngine):
-        """Test nominate succeeds when nominator and target are alive and no execution yet."""
+    def test_nominate_succeeds_when_both_alive(self, engine: GameEngine):
+        """Test nominate succeeds when nominator and target are alive."""
         session = _create_day_session(engine)
         players = session.grimoire.players
         nominator = players[0]
@@ -53,6 +69,28 @@ class TestNominateSuccess:
         assert nomination is not None
         assert nomination.nominator_id == nominator.id
         assert nomination.target_id == target.id
+
+    def test_nominate_tracks_nominator(self, engine: GameEngine):
+        """Test that nominating adds nominator to nominators_today."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+        nominator = players[0]
+        target = players[1]
+
+        engine.nominate(session, nominator.id, target.id)
+
+        assert nominator.id in session.grimoire.nominators_today
+
+    def test_nominate_tracks_nominee(self, engine: GameEngine):
+        """Test that nominating adds target to nominees_today."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+        nominator = players[0]
+        target = players[1]
+
+        engine.nominate(session, nominator.id, target.id)
+
+        assert target.id in session.grimoire.nominees_today
 
 
 class TestNominateRejectsDeadNominator:
@@ -89,34 +127,45 @@ class TestNominateRejectsDeadTarget:
             engine.nominate(session, nominator.id, target.id)
 
 
-class TestNominateRejectsAfterExecution:
-    """Tests for nomination rejection when an execution already occurred today."""
+class TestNominateRejectsLimitViolations:
+    """Tests for nomination per-day limit enforcement."""
 
-    def test_nominate_rejects_when_execution_already_occurred(self, engine: GameEngine):
-        """Test that nominating after an execution today raises NominationError."""
+    def test_nominate_rejects_when_nominator_already_nominated(self, engine: GameEngine):
+        """Test that nominating twice raises NominationLimitError."""
         session = _create_day_session(engine)
         players = session.grimoire.players
 
-        # Create a nomination and get enough votes for execution
-        nominator = players[0]
-        target = players[1]
-        nomination = engine.nominate(session, nominator.id, target.id)
+        # First nomination succeeds
+        engine.nominate(session, players[0].id, players[1].id)
 
-        # All 5 players are alive, need > 2.5 = 3 votes for execution
-        voters = [p for p in players if p.id != target.id]
-        for voter in voters[:3]:
-            engine.cast_vote(session, voter.id, nomination.id, True)
+        # Second nomination from same nominator should fail
+        with pytest.raises(NominationLimitError):
+            engine.nominate(session, players[0].id, players[2].id)
 
-        # Resolve => execution occurs
-        result = engine.resolve_nomination(session, nomination.id)
-        assert result is True
-        assert session.grimoire.execution_today is True
+    def test_nominate_rejects_when_target_already_nominated(self, engine: GameEngine):
+        """Test that nominating an already-nominated target raises NominationLimitError."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
 
-        # Now try to nominate again - should raise NominationError
-        second_nominator = players[2]
-        second_target = players[3]
-        with pytest.raises(NominationError):
-            engine.nominate(session, second_nominator.id, second_target.id)
+        # First nomination targeting players[1] succeeds
+        engine.nominate(session, players[0].id, players[1].id)
+
+        # Second nomination targeting players[1] from a different nominator should fail
+        with pytest.raises(NominationLimitError):
+            engine.nominate(session, players[2].id, players[1].id)
+
+    def test_multiple_nominations_from_different_nominators_allowed(self, engine: GameEngine):
+        """Test that different nominators can each nominate different targets."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        # Two different nominators, two different targets
+        nom1 = engine.nominate(session, players[0].id, players[1].id)
+        nom2 = engine.nominate(session, players[2].id, players[3].id)
+
+        assert nom1 is not None
+        assert nom2 is not None
+        assert len(session.grimoire.nominations_today) == 2
 
 
 class TestCastVote:
@@ -144,17 +193,74 @@ class TestCastVote:
         assert players[2].id in nomination.votes_against
         assert players[2].id not in nomination.votes_for
 
+    def test_cast_vote_dead_player_with_token_can_vote(self, engine: GameEngine):
+        """Test that a dead player with a vote token can vote."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        # Kill a player and give them a token
+        dead_player = players[2]
+        dead_player.status = PlayerStatus.DEAD
+        dead_player.has_vote_token = True
+
+        nomination = engine.nominate(session, players[0].id, players[1].id)
+        engine.cast_vote(session, dead_player.id, nomination.id, True)
+
+        assert dead_player.id in nomination.votes_for
+
+    def test_cast_vote_dead_player_token_is_spent(self, engine: GameEngine):
+        """Test that dead player's token is spent after voting."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        dead_player = players[2]
+        dead_player.status = PlayerStatus.DEAD
+        dead_player.has_vote_token = True
+
+        nomination = engine.nominate(session, players[0].id, players[1].id)
+        engine.cast_vote(session, dead_player.id, nomination.id, True)
+
+        assert dead_player.has_vote_token is False
+
+    def test_cast_vote_dead_player_without_token_rejected(self, engine: GameEngine):
+        """Test that a dead player without a token is rejected."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        dead_player = players[2]
+        dead_player.status = PlayerStatus.DEAD
+        dead_player.has_vote_token = False
+
+        nomination = engine.nominate(session, players[0].id, players[1].id)
+
+        with pytest.raises(DeadPlayerActionError):
+            engine.cast_vote(session, dead_player.id, nomination.id, True)
+
+    def test_cast_vote_dead_player_voting_against_spends_token(self, engine: GameEngine):
+        """Test that dead player voting False also spends their token."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        dead_player = players[2]
+        dead_player.status = PlayerStatus.DEAD
+        dead_player.has_vote_token = True
+
+        nomination = engine.nominate(session, players[0].id, players[1].id)
+        engine.cast_vote(session, dead_player.id, nomination.id, False)
+
+        assert dead_player.has_vote_token is False
+
 
 class TestResolveNomination:
-    """Tests for resolve_nomination tallying votes and determining execution."""
+    """Tests for resolve_nomination tallying votes and tracking about_to_die."""
 
-    def test_resolve_executes_target_when_votes_exceed_half(self, engine: GameEngine):
-        """Test that target is executed when votes_for > N/2 living players."""
+    def test_resolve_updates_about_to_die_when_threshold_met(self, engine: GameEngine):
+        """Test that about_to_die is set when votes >= ceil(N/2)."""
         session = _create_day_session(engine)
         players = session.grimoire.players
         nomination = engine.nominate(session, players[0].id, players[1].id)
 
-        # 5 living players, need > 2.5 = 3 votes
+        # 5 living players, threshold = ceil(5/2) = 3 votes
         engine.cast_vote(session, players[2].id, nomination.id, True)
         engine.cast_vote(session, players[3].id, nomination.id, True)
         engine.cast_vote(session, players[4].id, nomination.id, True)
@@ -162,41 +268,166 @@ class TestResolveNomination:
         result = engine.resolve_nomination(session, nomination.id)
 
         assert result is True
-        assert players[1].status == PlayerStatus.DEAD
-        assert session.grimoire.execution_today is True
+        assert session.grimoire.about_to_die_player_id == players[1].id
+        assert session.grimoire.about_to_die_votes == 3
 
-    def test_resolve_does_not_execute_when_votes_not_majority(self, engine: GameEngine):
-        """Test that target is NOT executed when votes_for <= N/2."""
+    def test_resolve_does_not_execute_immediately(self, engine: GameEngine):
+        """Test that target remains ALIVE after resolve (not executed yet)."""
         session = _create_day_session(engine)
         players = session.grimoire.players
         nomination = engine.nominate(session, players[0].id, players[1].id)
 
-        # 5 living players, need > 2.5 but only give 2 votes
+        # Give enough votes to meet threshold
+        engine.cast_vote(session, players[2].id, nomination.id, True)
+        engine.cast_vote(session, players[3].id, nomination.id, True)
+        engine.cast_vote(session, players[4].id, nomination.id, True)
+
+        engine.resolve_nomination(session, nomination.id)
+
+        # Target should still be alive — execution happens at end of day
+        assert players[1].status == PlayerStatus.ALIVE
+        assert session.grimoire.execution_today is False
+
+    def test_resolve_does_not_update_about_to_die_when_below_threshold(self, engine: GameEngine):
+        """Test that about_to_die is NOT set when votes < ceil(N/2)."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+        nomination = engine.nominate(session, players[0].id, players[1].id)
+
+        # 5 living players, threshold = 3, give only 2
         engine.cast_vote(session, players[2].id, nomination.id, True)
         engine.cast_vote(session, players[3].id, nomination.id, True)
 
         result = engine.resolve_nomination(session, nomination.id)
 
         assert result is False
+        assert session.grimoire.about_to_die_player_id is None
         assert players[1].status == PlayerStatus.ALIVE
-        assert session.grimoire.execution_today is False
 
-
-class TestAtMostOneExecutionPerDay:
-    """Tests that at most one execution can occur per day."""
-
-    def test_second_successful_nomination_rejected_after_execution(self, engine: GameEngine):
-        """Test that a second nomination is rejected after an execution already occurred."""
+    def test_resolve_clears_about_to_die_on_tie(self, engine: GameEngine):
+        """Test that tied qualifying votes clear about_to_die (no execution)."""
         session = _create_day_session(engine)
         players = session.grimoire.players
 
-        # First nomination succeeds with execution
-        nomination1 = engine.nominate(session, players[0].id, players[1].id)
-        voters = [p for p in players if p.id != players[1].id]
-        for voter in voters[:3]:
-            engine.cast_vote(session, voter.id, nomination1.id, True)
-        engine.resolve_nomination(session, nomination1.id)
+        # First nomination: 3 votes (meets threshold for 5 players)
+        nom1 = engine.nominate(session, players[0].id, players[1].id)
+        engine.cast_vote(session, players[2].id, nom1.id, True)
+        engine.cast_vote(session, players[3].id, nom1.id, True)
+        engine.cast_vote(session, players[4].id, nom1.id, True)
+        engine.resolve_nomination(session, nom1.id)
+        assert session.grimoire.about_to_die_player_id == players[1].id
 
-        # Second nomination should be rejected
-        with pytest.raises(NominationError):
-            engine.nominate(session, players[2].id, players[3].id)
+        # Second nomination: also 3 votes (tie)
+        nom2 = engine.nominate(session, players[2].id, players[3].id)
+        engine.cast_vote(session, players[0].id, nom2.id, True)
+        engine.cast_vote(session, players[1].id, nom2.id, True)
+        engine.cast_vote(session, players[4].id, nom2.id, True)
+        engine.resolve_nomination(session, nom2.id)
+
+        # Tie: about_to_die should be cleared
+        assert session.grimoire.about_to_die_player_id is None
+        assert session.grimoire.about_to_die_votes == 0
+
+    def test_later_nomination_with_more_votes_replaces_about_to_die(self, engine: GameEngine):
+        """Test that a later nomination with more votes replaces current about_to_die."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        # First nomination: 3 votes
+        nom1 = engine.nominate(session, players[0].id, players[1].id)
+        engine.cast_vote(session, players[2].id, nom1.id, True)
+        engine.cast_vote(session, players[3].id, nom1.id, True)
+        engine.cast_vote(session, players[4].id, nom1.id, True)
+        engine.resolve_nomination(session, nom1.id)
+        assert session.grimoire.about_to_die_player_id == players[1].id
+
+        # Second nomination: 4 votes (more than 3)
+        nom2 = engine.nominate(session, players[2].id, players[3].id)
+        engine.cast_vote(session, players[0].id, nom2.id, True)
+        engine.cast_vote(session, players[1].id, nom2.id, True)
+        engine.cast_vote(session, players[4].id, nom2.id, True)
+        # Need one more vote to exceed 3
+        # Actually players[3] is the target, let's use another voter
+        # All 5 players: 0,1,2,3,4. nom2 target is players[3]
+        # Voters: 0, 1, 4 already voted True (3 votes). Need 4 votes.
+        # players[3] is the target so they can also vote for themselves
+        engine.cast_vote(session, players[3].id, nom2.id, True)
+        engine.resolve_nomination(session, nom2.id)
+
+        assert session.grimoire.about_to_die_player_id == players[3].id
+        assert session.grimoire.about_to_die_votes == 4
+
+
+class TestEndDayPhase:
+    """Tests for end_day_phase executing the about_to_die player."""
+
+    def test_end_day_phase_executes_about_to_die_player(self, engine: GameEngine):
+        """Test that end_day_phase executes the about_to_die player."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        # Set up about_to_die
+        nom = engine.nominate(session, players[0].id, players[1].id)
+        engine.cast_vote(session, players[2].id, nom.id, True)
+        engine.cast_vote(session, players[3].id, nom.id, True)
+        engine.cast_vote(session, players[4].id, nom.id, True)
+        engine.resolve_nomination(session, nom.id)
+
+        result = engine.end_day_phase(session)
+
+        assert result == players[1].id
+        assert players[1].status == PlayerStatus.DEAD
+        assert session.grimoire.execution_today is True
+
+    def test_end_day_phase_returns_none_when_no_about_to_die(self, engine: GameEngine):
+        """Test that end_day_phase returns None when no about_to_die player."""
+        session = _create_day_session(engine)
+
+        result = engine.end_day_phase(session)
+
+        assert result is None
+        assert session.grimoire.execution_today is False
+
+    def test_end_day_phase_grants_vote_token(self, engine: GameEngine):
+        """Test that executed player receives a vote token."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        nom = engine.nominate(session, players[0].id, players[1].id)
+        engine.cast_vote(session, players[2].id, nom.id, True)
+        engine.cast_vote(session, players[3].id, nom.id, True)
+        engine.cast_vote(session, players[4].id, nom.id, True)
+        engine.resolve_nomination(session, nom.id)
+
+        engine.end_day_phase(session)
+
+        assert players[1].has_vote_token is True
+
+    def test_end_day_phase_lifts_poison_if_poisoner_executed(self, engine: GameEngine):
+        """Test that poison is lifted if the executed player is the Poisoner."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+
+        # Find or set up the poisoner
+        poisoner = None
+        for p in players:
+            if p.role and p.role.name.lower() == "poisoner":
+                poisoner = p
+                break
+
+        if poisoner is None:
+            # Manually assign Poisoner role to a player for this test
+            pytest.skip("No Poisoner in this game setup")
+
+        # Poison someone
+        victim = next(p for p in players if p.id != poisoner.id)
+        victim.is_poisoned = True
+
+        # Set up about_to_die to be the poisoner
+        session.grimoire.about_to_die_player_id = poisoner.id
+        session.grimoire.about_to_die_votes = 3
+
+        engine.end_day_phase(session)
+
+        # Poison should be lifted
+        assert victim.is_poisoned is False

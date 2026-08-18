@@ -16,8 +16,8 @@ The game runs as a local web application with a Python/FastAPI backend, a simple
 - **Human_Player**: The person playing the game through the browser interface
 - **Night_Phase**: The phase where characters with night abilities act in a defined order, receiving or providing information privately
 - **Day_Phase**: The phase where all players discuss, share information, accuse, and vote
-- **Nomination**: The act of a living player formally accusing another player during the Day_Phase, triggering a vote
-- **Execution**: The result of a successful nomination vote, removing a player from the game
+- **Nomination**: The act of a living player formally accusing another player during the Day_Phase, triggering a vote. Each alive player may nominate at most once per day, and each player may be nominated at most once per day.
+- **Execution**: The result of a successful nomination vote, removing a player from the game. A nominated player is executed if they received votes equal to at least half the number of alive players and more votes than any other nominated player that day.
 - **Demon**: The evil team's primary role that kills one player each night
 - **Minion**: An evil team member who supports the Demon through deception and misdirection
 - **Townsfolk**: Good-aligned roles that gather information or have protective abilities
@@ -28,6 +28,9 @@ The game runs as a local web application with a Python/FastAPI backend, a simple
 - **Script**: A named collection of character roles that defines what roles are available in a particular game. A game is created by providing a script. Trouble Brewing is the initial script for the MVP.
 - **Role_Definition**: A structured data record describing a character role, including its ability, alignment/team, setup requirements, night action order, information the player receives, and relevant game rules
 - **Edition**: A published collection of scripts and roles (e.g., Trouble Brewing, Sects & Violets, Bad Moon Rising). The MVP targets one edition but the architecture supports multiple.
+- **Vote_Token**: A token given to dead players, allowing them one final vote for the rest of the game. Once used, it is spent and the player cannot vote again.
+- **About_To_Die**: The nominated player who has received the most votes (at or above the execution threshold) during the current day. This player will be executed at end of day unless another player receives more votes.
+- **Demon_Bluffs**: Three not-in-play good characters revealed to the Demon on the first night (in games of 7+ players) to help them create a believable cover story.
 
 ## Requirements
 
@@ -42,8 +45,10 @@ The game runs as a local web application with a Python/FastAPI backend, a simple
 3. WHEN roles are selected, THE Game_Engine SHALL assign exactly one role to each player, including the Human_Player and all AI_Agents, randomly
 4. WHEN a game is created, THE Game_Engine SHALL support a player count between 5 and 7 players for the MVP (1 human + 4-6 AI agents)
 5. WHEN roles are assigned, THE Game_Engine SHALL provide each player only their own Role_Definition and alignment information as their initial Character_Sheet
-6. WHEN roles are assigned, THE Game_Engine SHALL reveal to each Minion the identity of the Demon player
-7. WHEN roles are assigned, THE Game_Engine SHALL reveal to the Demon the identities of all Minion players
+6. WHERE there are 7 or more players in the game, WHEN roles are assigned, THE Game_Engine SHALL reveal to each Minion the identity of the Demon player
+7. WHERE there are 7 or more players in the game, WHEN roles are assigned, THE Game_Engine SHALL reveal to the Demon the identities of all Minion players
+8. WHERE there are fewer than 7 players in the game, THE Game_Engine SHALL NOT distribute evil team knowledge (Minions do not learn the Demon identity and the Demon does not learn Minion identities)
+9. WHERE there are 7 or more players in the game, WHEN roles are assigned, THE Game_Engine SHALL reveal to the Demon three not-in-play good character names from the Script as Demon_Bluffs (safe bluff options that are not assigned to any player)
 
 ### Requirement 2: Night Phase Execution
 
@@ -64,9 +69,9 @@ The game runs as a local web application with a Python/FastAPI backend, a simple
 
 #### Acceptance Criteria
 
-1. WHEN the Day_Phase begins, THE Game_Engine SHALL allow all living players to communicate in a shared discussion
+1. WHEN the Day_Phase begins, THE Game_Engine SHALL allow all players (both alive and dead) to communicate in a shared discussion
 2. WHILE the Day_Phase is active, THE AI_Agent SHALL generate messages based on its role, private information, personality, and strategic goals
-3. WHILE the Day_Phase is active, THE Human_Player SHALL be able to send messages visible to all living players
+3. WHILE the Day_Phase is active, THE Human_Player SHALL be able to send messages visible to all players
 4. WHILE the Day_Phase is active, THE AI_Agent SHALL respond to statements and questions from other players within the discussion context
 5. WHEN an AI_Agent communicates, THE AI_Agent SHALL maintain consistency with its previously stated claims unless deliberately changing strategy
 
@@ -76,12 +81,18 @@ The game runs as a local web application with a Python/FastAPI backend, a simple
 
 #### Acceptance Criteria
 
-1. WHILE the Day_Phase is active, THE Game_Engine SHALL allow any living player to nominate another living player for execution
-2. WHEN a nomination is made, THE Game_Engine SHALL conduct a vote among all living players (including the nominated player)
-3. WHEN a vote is conducted, THE Game_Engine SHALL require a strict majority of living players to vote in favor for the nomination to succeed
-4. WHEN a nomination succeeds, THE Game_Engine SHALL mark the nominated player as executed and dead
-5. THE Game_Engine SHALL allow at most one execution per day
-6. WHEN an AI_Agent votes, THE AI_Agent SHALL decide its vote based on discussion context, suspicions, and strategic reasoning
+1. WHILE the Day_Phase is active, THE Game_Engine SHALL allow any living player to nominate another player for execution, subject to: only alive players may nominate, each alive player may nominate at most once per day, and each player (alive or dead) may be nominated at most once per day
+2. WHEN a nomination is made, THE Game_Engine SHALL conduct a vote among all living players and any dead players who still possess their Vote_Token
+3. WHEN a vote is conducted, THE Game_Engine SHALL require votes equal to at least half the number of alive players (rounded up for odd numbers) for the nomination to reach the execution threshold
+4. WHEN a nominated player receives votes at or above the execution threshold AND receives more votes than any other nominee that day, THE Game_Engine SHALL mark that player as About_To_Die
+5. THE Game_Engine SHALL allow multiple nominations per day, tracking each nominee's vote tally; if a new nominee receives more qualifying votes than the current About_To_Die player, the new nominee becomes About_To_Die instead
+6. WHEN the Day_Phase ends, THE Game_Engine SHALL execute the About_To_Die player (if any), marking them as dead
+7. THE Game_Engine SHALL allow at most one execution per day (at day's end)
+8. IF two or more nominees are tied for the highest number of qualifying votes, THEN THE Game_Engine SHALL execute no one that day
+9. WHEN an AI_Agent votes, THE AI_Agent SHALL decide its vote based on discussion context, suspicions, and strategic reasoning
+10. WHEN a player dies, THE Game_Engine SHALL grant that player one Vote_Token
+11. WHEN a dead player uses their Vote_Token to vote in a nomination, THE Game_Engine SHALL spend the token and prevent that player from voting in any future nominations
+12. IF a dead player has already spent their Vote_Token, THEN THE Game_Engine SHALL prevent that player from voting
 
 ### Requirement 5: Win Condition Detection
 
@@ -169,6 +180,7 @@ The game runs as a local web application with a Python/FastAPI backend, a simple
 2. WHILE a player is poisoned, THE Game_Engine SHALL cause that player's ability to malfunction (provide false information or have no effect)
 3. WHEN a new Night_Phase begins, THE Game_Engine SHALL remove the previous poison before the Poisoner selects a new target
 4. IF the Poisoner is dead, THEN THE Game_Engine SHALL skip the Poisoner's night action
+5. IF the Poisoner dies (at any point during the game), THEN THE Game_Engine SHALL immediately lift any currently active poison from the affected player, ending the persistent poison effect upon the Poisoner's death
 
 ### Requirement 12: Slayer Day Ability
 

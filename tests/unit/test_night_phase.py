@@ -308,6 +308,33 @@ class TestDemonKill:
         assert target.id not in summary.deaths
         assert summary.deaths == []
 
+    def test_demon_kill_grants_vote_token(self, engine: GameEngine):
+        """Demon kill should grant the dead target a Vote_Token (has_vote_token = True)."""
+        session = engine.create_game("trouble_brewing", 5, "Human")
+        engine.begin_night_phase(session)
+
+        imp = next(
+            p for p in session.grimoire.players
+            if p.role.role_type == RoleType.DEMON
+        )
+        target = next(
+            p for p in session.grimoire.players
+            if p.id != imp.id and p.status == PlayerStatus.ALIVE
+        )
+
+        # Target should not have a vote token before death
+        assert target.has_vote_token is False
+
+        kill_action = NightAction(
+            player_id=imp.id, action_type="kill", target_id=target.id
+        )
+        engine.resolve_night_action(session, imp.id, kill_action)
+        engine.complete_night_phase(session)
+
+        # After death, target should have a vote token
+        assert target.status == PlayerStatus.DEAD
+        assert target.has_vote_token is True
+
     def test_dead_demon_action_is_noop(self, engine: GameEngine):
         """A dead Demon's kill action should have no effect."""
         session = engine.create_game("trouble_brewing", 5, "Human")
