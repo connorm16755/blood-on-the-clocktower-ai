@@ -13,7 +13,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Create `__init__.py` files for all packages
     - _Requirements: 8.1_
 
-  - [-] 1.2 Implement core data models
+  - [ ] 1.2 Implement core data models
     - Create `models/game.py` with enums: `GamePhase`, `Team`, `RoleType`, `PlayerStatus`
     - Create dataclasses: `RoleDefinition`, `Player`, `Grimoire`, `GameSession`, `GameResult`
     - Create `models/actions.py` with: `NightAction`, `NightActionResult`, `NightSummary`, `Message`, `Nomination`, `VoteContext`
@@ -25,17 +25,17 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Validate player_count is between 5 and 7 in `CreateGameRequest`
     - _Requirements: 10.4, 1.4_
 
-- [ ] 2. Implement Role Registry and data-driven role/script loading
-  - [ ] 2.1 Create YAML role definition files for Trouble Brewing
+- [x] 2. Implement Role Registry and data-driven role/script loading
+  - [x] 2.1 Create YAML role definition files for Trouble Brewing
     - Create role files in `data/roles/trouble_brewing/`: `washerwoman.yaml`, `librarian.yaml`, `investigator.yaml`, `chef.yaml`, `empath.yaml`, `slayer.yaml`, `butler.yaml`, `poisoner.yaml`, `imp.yaml`
     - Each file includes: name, role_type, team, ability_description, first_night_order, other_nights_order, setup_requirements, information_provided, game_rules, night_action details
     - _Requirements: 7.1, 7.2, 7.7_
 
-  - [ ] 2.2 Create the Trouble Brewing script definition file
+  - [x] 2.2 Create the Trouble Brewing script definition file
     - Create `data/scripts/trouble_brewing.yaml` with role lists per type, distribution table for player counts 5-7, and night order for first_night and other_nights
     - _Requirements: 7.3, 7.4, 7.7_
 
-  - [ ] 2.3 Implement the RoleRegistry class
+  - [x] 2.3 Implement the RoleRegistry class
     - Create `role_registry/registry.py` with `RoleRegistry` class
     - Implement `__init__` to load all role definition YAML files from data directory
     - Implement `get_role(role_name)` to retrieve a `RoleDefinition` by name
@@ -45,7 +45,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Validate all required fields are present when loading role data, raise `RoleDataError` on malformed files
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.8, 8.2_
 
-  - [ ] 2.4 Write unit tests for RoleRegistry
+  - [x] 2.4 Write unit tests for RoleRegistry
     - Test `get_role` returns correct RoleDefinition for each Trouble Brewing role
     - Test `get_role` raises error for unknown role names
     - Test `get_script` loads Trouble Brewing with all 9 roles
@@ -55,17 +55,17 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Test malformed YAML raises `RoleDataError` on load
     - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-  - [ ]* 2.5 Write property test for Role Distribution Correctness (Property 1)
+  - [x] 2.5 Write property test for Role Distribution Correctness (Property 1)
     - **Property 1: Role Distribution Correctness**
     - Test that for any valid script and player count (5-7), selected roles match the distribution table exactly with no duplicates and one role per player
     - **Validates: Requirements 1.2, 1.3, 7.4**
 
-  - [ ]* 2.5 Write property test for Role Definition Completeness (Property 12)
+  - [x] 2.5 Write property test for Role Definition Completeness (Property 12)
     - **Property 12: Role Definition Completeness**
     - Test that every loaded role definition contains all required fields: name, role_type, team, ability_description, night action order, setup_requirements, information_provided, game_rules
     - **Validates: Requirements 7.2, 7.3**
 
-  - [ ]* 2.6 Write property test for Script Role Containment (Property 13)
+  - [x] 2.6 Write property test for Script Role Containment (Property 13)
     - **Property 13: Script Role Containment**
     - Test that every role assigned in a game is a member of the script's role list
     - **Validates: Requirements 7.4**
