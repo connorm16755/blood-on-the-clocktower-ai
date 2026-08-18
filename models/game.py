@@ -70,6 +70,7 @@ class Player:
     is_human: bool = False
     is_poisoned: bool = False
     used_ability: bool = False  # For one-shot abilities like Slayer
+    evil_knowledge: dict = field(default_factory=dict)  # Evil team info: {"demon_id": ...} or {"minion_ids": [...]}
 
 
 @dataclass
