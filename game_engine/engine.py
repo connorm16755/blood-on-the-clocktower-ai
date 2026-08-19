@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from typing import Optional
 
 from game_engine.exceptions import (
@@ -14,7 +15,8 @@ from game_engine.exceptions import (
     NominationError,
     NominationLimitError,
 )
-from models.actions import NightAction, NightActionResult, Nomination, NightSummary
+
+from models.actions import Message, NightAction, NightActionResult, Nomination, NightSummary
 from models.game import (
     GamePhase,
     GameSession,
@@ -22,7 +24,6 @@ from models.game import (
     Player,
     PlayerStatus,
     RoleType,
-    Team,
 )
 from role_registry.registry import RoleRegistry
 from role_registry.models import Script
@@ -393,6 +394,45 @@ class GameEngine:
         grimoire.nominees_today = []
         grimoire.about_to_die_player_id = None
         grimoire.about_to_die_votes = 0
+
+    def send_message(
+        self, session: GameSession, player_id: str, content: str
+    ) -> Message:
+        """Send a message during day phase discussion.
+
+        Both alive and dead players may send messages during the day phase.
+
+        Args:
+            session: The current game session.
+            player_id: The ID of the player sending the message.
+            content: The message content.
+
+        Returns:
+            The created Message object.
+
+        Raises:
+            InvalidPhaseError: If the game is not in DAY phase.
+        """
+        grimoire = session.grimoire
+
+        if grimoire.phase != GamePhase.DAY:
+            raise InvalidPhaseError(
+                "Messages can only be sent during the day phase."
+            )
+
+        player = self._find_player(grimoire, player_id)
+        sender_name = player.name if player else ""
+
+        message = Message(
+            sender_id=player_id,
+            sender_name=sender_name,
+            content=content,
+            timestamp=time.time(),
+            phase=f"day_{grimoire.day_number}",
+        )
+        grimoire.messages.append(message)
+
+        return message
 
     def nominate(
         self, session: GameSession, nominator_id: str, target_id: str

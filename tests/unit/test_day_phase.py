@@ -5,6 +5,7 @@ import pytest
 from game_engine.engine import GameEngine
 from game_engine.exceptions import (
     DeadPlayerActionError,
+    InvalidPhaseError,
     InvalidTargetError,
     NominationLimitError,
 )
@@ -52,6 +53,52 @@ class TestBeginDayPhase:
         session = _create_day_session(engine)
         assert session.grimoire.about_to_die_player_id is None
         assert session.grimoire.about_to_die_votes == 0
+
+
+class TestDayDiscussionMessages:
+    """Tests for message sending during day discussion."""
+
+    def test_alive_player_can_send_message_during_day(self, engine: GameEngine):
+        """Test that an alive player can send a message during day phase."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+        alive_player = players[0]
+
+        message = engine.send_message(session, alive_player.id, "I am the Washerwoman!")
+
+        assert message.sender_id == alive_player.id
+        assert message.content == "I am the Washerwoman!"
+        assert message in session.grimoire.messages
+
+    def test_dead_player_can_send_message_during_day(self, engine: GameEngine):
+        """Test that a dead player can send a message during day phase."""
+        session = _create_day_session(engine)
+        players = session.grimoire.players
+        dead_player = players[1]
+        dead_player.status = PlayerStatus.DEAD
+
+        message = engine.send_message(session, dead_player.id, "I was the Chef, trust me.")
+
+        assert message.sender_id == dead_player.id
+        assert message.content == "I was the Chef, trust me."
+        assert message in session.grimoire.messages
+
+    def test_send_message_rejected_during_night_phase(self, engine: GameEngine):
+        """Test that sending a message is rejected during NIGHT phase."""
+        session = engine.create_game("trouble_brewing", 5, "Human")
+        engine.begin_night_phase(session)
+        players = session.grimoire.players
+
+        with pytest.raises(InvalidPhaseError):
+            engine.send_message(session, players[0].id, "Hello")
+
+    def test_send_message_rejected_during_setup_phase(self, engine: GameEngine):
+        """Test that sending a message is rejected during SETUP phase."""
+        session = engine.create_game("trouble_brewing", 5, "Human")
+        players = session.grimoire.players
+
+        with pytest.raises(InvalidPhaseError):
+            engine.send_message(session, players[0].id, "Hello")
 
 
 class TestNominateSuccess:

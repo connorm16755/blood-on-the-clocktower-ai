@@ -195,7 +195,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - **NOTE: Previously completed but needs MAJOR rework for: nomination limits, vote tokens, about-to-die tracking, multiple nominations per day, execution at end of day, ceil threshold**
     - _Requirements: 3.1, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11, 4.12, 14.2_
 
-  - [ ] 3.10 Write unit tests for Day Phase, Nomination, and Voting
+  - [x] 3.10 Write unit tests for Day Phase, Nomination, and Voting
     - Test `begin_day_phase` transitions game phase to DAY and resets daily state (nominators_today, nominees_today, about_to_die)
     - Test all players (alive and dead) can send messages during discussion
     - Test `nominate` succeeds when nominator is alive and hasn't nominated today, target hasn't been nominated today
