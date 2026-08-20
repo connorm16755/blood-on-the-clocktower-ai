@@ -1,6 +1,7 @@
 # Feature: blood-on-the-clocktower-ai, Property 7: All Players Discussion Access
 # Feature: blood-on-the-clocktower-ai, Property 8: Nomination Validity with Per-Day Limits
 # Feature: blood-on-the-clocktower-ai, Property 9: Execution Threshold and About-To-Die Tracking
+# Feature: blood-on-the-clocktower-ai, Property 21: Vote Token Mechanics
 """Property tests for Day Phase and Voting mechanics.
 
 Tests that:
@@ -9,8 +10,10 @@ Tests that:
   nominated today. Dead players cannot nominate. (Property 8)
 - Threshold is ceil(N/2), about_to_die tracked across multiple nominations,
   execution at end of day only, ties result in no execution. (Property 9)
+- Dead players receive a vote token on death, can use it once, token is spent
+  permanently after use, and voting is rejected without a token. (Property 21)
 
-**Validates: Requirements 3.1, 3.3, 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8**
+**Validates: Requirements 3.1, 3.3, 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.10, 4.11, 4.12**
 """
 
 import math
@@ -21,10 +24,12 @@ from hypothesis import strategies as st
 from game_engine.engine import GameEngine
 from game_engine.exceptions import (
     DeadPlayerActionError,
+    InvalidPhaseError,
     InvalidTargetError,
     NominationLimitError,
 )
-from models.game import PlayerStatus
+from models.actions import Message
+from models.game import GamePhase, PlayerStatus
 
 
 def _safe_cast_vote(engine, session, voter_id, nomination_id, vote):
@@ -43,8 +48,86 @@ def _safe_cast_vote(engine, session, voter_id, nomination_id, vote):
 
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
+def test_living_players_can_send_messages_during_day(player_count: int) -> None:
+    """Living players can send messages during day phase.
+
+    **Validates: Requirements 3.1**
+    """
+    engine = GameEngine()
+    session = engine.create_game("trouble_brewing", player_count, "TestHuman")
+
+    engine.begin_night_phase(session)
+    engine.complete_night_phase(session)
+    engine.begin_day_phase(session)
+
+    living_players = [
+        p for p in session.grimoire.players if p.status == PlayerStatus.ALIVE
+    ]
+
+    for player in living_players:
+        msg = engine.send_message(session, player.id, f"Hello from {player.name}")
+        assert isinstance(msg, Message)
+        assert msg.sender_id == player.id
+        assert msg.content == f"Hello from {player.name}"
+
+
+@settings(max_examples=100, deadline=None)
+@given(player_count=st.sampled_from([5, 6, 7]))
+def test_dead_players_can_send_messages_during_day(player_count: int) -> None:
+    """Dead players can send messages during day phase.
+
+    **Validates: Requirements 3.1**
+    """
+    engine = GameEngine()
+    session = engine.create_game("trouble_brewing", player_count, "TestHuman")
+
+    engine.begin_night_phase(session)
+    engine.complete_night_phase(session)
+    engine.begin_day_phase(session)
+
+    # Make a player dead
+    dead_player = session.grimoire.players[0]
+    dead_player.status = PlayerStatus.DEAD
+    dead_player.has_vote_token = True
+
+    msg = engine.send_message(session, dead_player.id, "I'm dead but still talking")
+    assert isinstance(msg, Message)
+    assert msg.sender_id == dead_player.id
+    assert msg.content == "I'm dead but still talking"
+
+
+@settings(max_examples=100, deadline=None)
+@given(player_count=st.sampled_from([5, 6, 7]))
+def test_messages_rejected_outside_day_phase(player_count: int) -> None:
+    """Messages cannot be sent outside of day phase (InvalidPhaseError).
+
+    **Validates: Requirements 3.1**
+    """
+    engine = GameEngine()
+    session = engine.create_game("trouble_brewing", player_count, "TestHuman")
+
+    engine.begin_night_phase(session)
+
+    player = session.grimoire.players[0]
+
+    # During night phase, sending a message should raise InvalidPhaseError
+    try:
+        engine.send_message(session, player.id, "Should not work at night")
+        assert False, "Should raise InvalidPhaseError during night phase"
+    except InvalidPhaseError:
+        pass
+
+
+# --- Property 8: Nomination Validity with Per-Day Limits ---
+
+
+@settings(max_examples=100, deadline=None)
+@given(player_count=st.sampled_from([5, 6, 7]))
 def test_living_players_can_nominate(player_count: int) -> None:
-    """Living players CAN successfully nominate other living players."""
+    """Living players CAN successfully nominate other living players.
+
+    **Validates: Requirements 4.1**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -69,7 +152,10 @@ def test_living_players_can_nominate(player_count: int) -> None:
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_dead_players_cannot_nominate(player_count: int) -> None:
-    """Dead players CANNOT nominate."""
+    """Dead players CANNOT nominate.
+
+    **Validates: Requirements 4.1**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -96,14 +182,14 @@ def test_dead_players_cannot_nominate(player_count: int) -> None:
         pass  # Expected
 
 
-# --- Property 8: Nomination Validity with Per-Day Limits ---
-
-
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_nomination_validity_success(player_count: int) -> None:
     """Nomination succeeds when nominator alive, hasn't nominated today,
-    and target hasn't been nominated today."""
+    and target hasn't been nominated today.
+
+    **Validates: Requirements 4.1**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -129,7 +215,10 @@ def test_nomination_validity_success(player_count: int) -> None:
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_nomination_rejected_dead_nominator(player_count: int) -> None:
-    """Nomination raises DeadPlayerActionError when nominator is dead."""
+    """Nomination raises DeadPlayerActionError when nominator is dead.
+
+    **Validates: Requirements 4.1**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -155,7 +244,10 @@ def test_nomination_rejected_dead_nominator(player_count: int) -> None:
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_nomination_rejected_dead_target(player_count: int) -> None:
-    """Nomination raises InvalidTargetError when target is dead."""
+    """Nomination raises InvalidTargetError when target is dead.
+
+    **Validates: Requirements 4.1**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -181,7 +273,10 @@ def test_nomination_rejected_dead_target(player_count: int) -> None:
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_nomination_rejected_nominator_already_nominated(player_count: int) -> None:
-    """Nomination raises NominationLimitError when nominator already nominated today."""
+    """Nomination raises NominationLimitError when nominator already nominated today.
+
+    **Validates: Requirements 4.1**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -211,7 +306,10 @@ def test_nomination_rejected_nominator_already_nominated(player_count: int) -> N
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_nomination_rejected_target_already_nominated(player_count: int) -> None:
-    """Nomination raises NominationLimitError when target already nominated today."""
+    """Nomination raises NominationLimitError when target already nominated today.
+
+    **Validates: Requirements 4.1**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -247,7 +345,10 @@ def test_nomination_rejected_target_already_nominated(player_count: int) -> None
     votes_for_count=st.integers(min_value=0, max_value=7),
 )
 def test_execution_threshold_ceil_half(player_count: int, votes_for_count: int) -> None:
-    """Threshold is ceil(N/2). Votes meeting threshold return True from resolve."""
+    """Threshold is ceil(N/2). Votes meeting threshold return True from resolve.
+
+    **Validates: Requirements 4.3**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -309,7 +410,10 @@ def test_execution_threshold_ceil_half(player_count: int, votes_for_count: int) 
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_about_to_die_tracking(player_count: int) -> None:
-    """When votes meet threshold, about_to_die is updated. Execution at end of day."""
+    """When votes meet threshold, about_to_die is updated. Execution at end of day.
+
+    **Validates: Requirements 4.4, 4.5, 4.6**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -346,19 +450,19 @@ def test_about_to_die_tracking(player_count: int) -> None:
     # End day: execute
     executed_id = engine.end_day_phase(session)
 
-    if session.grimoire.about_to_die_player_id is not None or votes_cast >= threshold:
-        # Note: about_to_die_player_id may have been set; end_day executes it
-        pass  # Execution behavior verified by unit tests
-
     # If about_to_die was set, the player should be dead now
     if votes_cast >= threshold:
         assert living_players[1].status == PlayerStatus.DEAD
+        assert executed_id == living_players[1].id
 
 
 @settings(max_examples=100, deadline=None)
 @given(player_count=st.sampled_from([5, 6, 7]))
 def test_tie_results_in_no_execution(player_count: int) -> None:
-    """If two nominees tie for highest qualifying votes, no execution occurs."""
+    """If two nominees tie for highest qualifying votes, no execution occurs.
+
+    **Validates: Requirements 4.7, 4.8**
+    """
     engine = GameEngine()
     session = engine.create_game("trouble_brewing", player_count, "TestHuman")
 
@@ -415,3 +519,202 @@ def test_tie_results_in_no_execution(player_count: int) -> None:
     assert executed_id is None
     assert living_players[1].status == PlayerStatus.ALIVE
     assert living_players[3].status == PlayerStatus.ALIVE
+
+
+# --- Property 21: Vote Token Mechanics ---
+
+
+@settings(max_examples=100, deadline=None)
+@given(player_count=st.sampled_from([5, 6, 7]))
+def test_dead_player_receives_vote_token_on_death(player_count: int) -> None:
+    """When a player dies via execution, they receive has_vote_token = True.
+
+    **Validates: Requirements 4.10**
+    """
+    engine = GameEngine()
+    session = engine.create_game("trouble_brewing", player_count, "TestHuman")
+
+    engine.begin_night_phase(session)
+    engine.complete_night_phase(session)
+    engine.begin_day_phase(session)
+
+    living_players = [
+        p for p in session.grimoire.players if p.status == PlayerStatus.ALIVE
+    ]
+    living_count = len(living_players)
+    threshold = math.ceil(living_count / 2)
+
+    target = living_players[1]
+
+    # Verify the target does NOT have a vote token while alive
+    assert target.has_vote_token is False
+
+    # Nominate the target and give enough votes to execute
+    nomination = engine.nominate(session, living_players[0].id, target.id)
+
+    votes_cast = 0
+    for p in living_players:
+        if p.role and p.role.name.lower() == "butler":
+            engine.cast_vote(session, p.id, nomination.id, False)
+        elif votes_cast < threshold:
+            engine.cast_vote(session, p.id, nomination.id, True)
+            votes_cast += 1
+        else:
+            engine.cast_vote(session, p.id, nomination.id, False)
+
+    engine.resolve_nomination(session, nomination.id)
+
+    # Execute at end of day
+    engine.end_day_phase(session)
+
+    # After death via execution, player should have vote token
+    if votes_cast >= threshold:
+        assert target.status == PlayerStatus.DEAD
+        assert target.has_vote_token is True
+
+
+@settings(max_examples=100, deadline=None)
+@given(player_count=st.sampled_from([5, 6, 7]))
+def test_dead_player_with_token_can_vote(player_count: int) -> None:
+    """Dead player WITH vote token can successfully cast a vote, token is spent after.
+
+    **Validates: Requirements 4.11**
+    """
+    engine = GameEngine()
+    session = engine.create_game("trouble_brewing", player_count, "TestHuman")
+
+    engine.begin_night_phase(session)
+    engine.complete_night_phase(session)
+    engine.begin_day_phase(session)
+
+    # Set up a dead player with a vote token
+    dead_player = session.grimoire.players[0]
+    dead_player.status = PlayerStatus.DEAD
+    dead_player.has_vote_token = True
+
+    living_players = [
+        p for p in session.grimoire.players if p.status == PlayerStatus.ALIVE
+    ]
+    assert len(living_players) >= 2
+
+    # Create a nomination between two living players
+    nominator = living_players[0]
+    target = living_players[1]
+    nomination = engine.nominate(session, nominator.id, target.id)
+
+    # Dead player with token can vote
+    engine.cast_vote(session, dead_player.id, nomination.id, True)
+
+    # Token should now be spent
+    assert dead_player.has_vote_token is False
+    # The vote should be recorded
+    assert dead_player.id in nomination.votes_for
+
+
+@settings(max_examples=100, deadline=None)
+@given(player_count=st.sampled_from([5, 6, 7]))
+def test_dead_player_without_token_cannot_vote(player_count: int) -> None:
+    """Dead player WITHOUT vote token is rejected with DeadPlayerActionError.
+
+    **Validates: Requirements 4.12**
+    """
+    engine = GameEngine()
+    session = engine.create_game("trouble_brewing", player_count, "TestHuman")
+
+    engine.begin_night_phase(session)
+    engine.complete_night_phase(session)
+    engine.begin_day_phase(session)
+
+    # Set up a dead player WITHOUT a vote token
+    dead_player = session.grimoire.players[0]
+    dead_player.status = PlayerStatus.DEAD
+    dead_player.has_vote_token = False
+
+    living_players = [
+        p for p in session.grimoire.players if p.status == PlayerStatus.ALIVE
+    ]
+    assert len(living_players) >= 2
+
+    nominator = living_players[0]
+    target = living_players[1]
+    nomination = engine.nominate(session, nominator.id, target.id)
+
+    # Dead player without token should be rejected
+    try:
+        engine.cast_vote(session, dead_player.id, nomination.id, True)
+        assert False, "Should raise DeadPlayerActionError for dead player without token"
+    except DeadPlayerActionError:
+        pass
+
+
+@settings(max_examples=100, deadline=None)
+@given(player_count=st.sampled_from([5, 6, 7]))
+def test_vote_token_spent_permanently(player_count: int) -> None:
+    """Token is spent permanently — dead player cannot vote in a second nomination.
+
+    **Validates: Requirements 4.11, 4.12**
+    """
+    engine = GameEngine()
+    session = engine.create_game("trouble_brewing", player_count, "TestHuman")
+
+    engine.begin_night_phase(session)
+    engine.complete_night_phase(session)
+    engine.begin_day_phase(session)
+
+    # Set up a dead player with a vote token
+    dead_player = session.grimoire.players[0]
+    dead_player.status = PlayerStatus.DEAD
+    dead_player.has_vote_token = True
+
+    living_players = [
+        p for p in session.grimoire.players if p.status == PlayerStatus.ALIVE
+    ]
+    assert len(living_players) >= 3
+
+    # First nomination — dead player uses token
+    nom1 = engine.nominate(session, living_players[0].id, living_players[1].id)
+    engine.cast_vote(session, dead_player.id, nom1.id, True)
+
+    # Token is now spent
+    assert dead_player.has_vote_token is False
+
+    # Second nomination — dead player cannot vote
+    nom2 = engine.nominate(session, living_players[2].id, living_players[0].id)
+
+    try:
+        engine.cast_vote(session, dead_player.id, nom2.id, True)
+        assert False, "Should raise DeadPlayerActionError after token spent"
+    except DeadPlayerActionError:
+        pass
+
+
+@settings(max_examples=100, deadline=None)
+@given(player_count=st.sampled_from([5, 6, 7]))
+def test_alive_players_can_always_vote(player_count: int) -> None:
+    """Alive players can always vote — no token required.
+
+    **Validates: Requirements 4.2**
+    """
+    engine = GameEngine()
+    session = engine.create_game("trouble_brewing", player_count, "TestHuman")
+
+    engine.begin_night_phase(session)
+    engine.complete_night_phase(session)
+    engine.begin_day_phase(session)
+
+    living_players = [
+        p for p in session.grimoire.players if p.status == PlayerStatus.ALIVE
+    ]
+    assert len(living_players) >= 3
+
+    # Create a nomination
+    nomination = engine.nominate(session, living_players[0].id, living_players[1].id)
+
+    # All alive players (except Butler edge case) can vote without needing a token
+    for player in living_players:
+        assert player.has_vote_token is False  # Alive players don't have tokens
+        _safe_cast_vote(engine, session, player.id, nomination.id, True)
+
+    # Verify votes were recorded (some Butler votes may have been cast as False)
+    total_votes = len(nomination.votes_for) + len(nomination.votes_against)
+    assert total_votes == len(living_players)
