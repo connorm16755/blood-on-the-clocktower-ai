@@ -19,11 +19,13 @@ from game_engine.exceptions import (
 from models.actions import Message, NightAction, NightActionResult, Nomination, NightSummary
 from models.game import (
     GamePhase,
+    GameResult,
     GameSession,
     Grimoire,
     Player,
     PlayerStatus,
     RoleType,
+    Team,
 )
 from role_registry.registry import RoleRegistry
 from role_registry.models import Script
@@ -674,6 +676,80 @@ class GameEngine:
                     player.is_poisoned = False
 
         return executed_id
+
+    def check_win_condition(
+        self, session: GameSession
+    ) -> Optional[GameResult]:
+        """Check if a win condition has been met.
+
+        Checks after each execution and night phase:
+        - Good wins if the Demon is dead.
+        - Evil wins if only 2 living players remain and one is the Demon.
+
+        If a win condition is met, sets session.result and transitions
+        the game phase to ENDED.
+
+        Args:
+            session: The current game session.
+
+        Returns:
+            GameResult if a win condition is met, None otherwise.
+        """
+        grimoire = session.grimoire
+
+        # Find all Demon players (supports Imp starpass where multiple
+        # players may have had the Demon role during a game)
+        demons = [
+            player
+            for player in grimoire.players
+            if player.role and player.role.role_type == RoleType.DEMON
+        ]
+
+        # If no demon found, no win condition can be evaluated
+        if not demons:
+            return None
+
+        # Check if any Demon is alive
+        living_demon = next(
+            (d for d in demons if d.status == PlayerStatus.ALIVE), None
+        )
+
+        # Good wins: All Demons are dead (no living Demon remains)
+        if living_demon is None:
+            role_reveals = {
+                p.id: p.role.name
+                for p in grimoire.players
+                if p.role is not None
+            }
+            result = GameResult(
+                winning_team=Team.GOOD,
+                reason="demon_executed",
+                role_reveals=role_reveals,
+            )
+            session.result = result
+            grimoire.phase = GamePhase.ENDED
+            return result
+
+        # Evil wins: exactly 2 players alive and one is the Demon
+        alive_players = [
+            p for p in grimoire.players if p.status == PlayerStatus.ALIVE
+        ]
+        if len(alive_players) == 2 and living_demon in alive_players:
+            role_reveals = {
+                p.id: p.role.name
+                for p in grimoire.players
+                if p.role is not None
+            }
+            result = GameResult(
+                winning_team=Team.EVIL,
+                reason="two_players_remain",
+                role_reveals=role_reveals,
+            )
+            session.result = result
+            grimoire.phase = GamePhase.ENDED
+            return result
+
+        return None
 
     def _find_player(
         self, grimoire: Grimoire, player_id: str

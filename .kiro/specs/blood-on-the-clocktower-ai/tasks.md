@@ -77,7 +77,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Test that every role assigned in a game is a member of the script's role list
     - **Validates: Requirements 7.4**
 
-- [ ] 3. Implement Game Engine core
+- [x] 3. Implement Game Engine core
   - [x] 3.1 Implement game creation and role assignment
     - Create `game_engine/engine.py` with `GameEngine` class
     - Implement `create_game(script_name, player_count, human_player_name)` that uses `RoleRegistry` to select and randomly assign roles
@@ -217,7 +217,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - **NOTE: Previously completed but needs MAJOR rework for new mechanics**
     - _Requirements: 3.1, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.10, 4.11, 4.12_
 
-  - [ ] 3.11 Write property tests for Day Phase and Voting (Properties 7, 8, 9, 21)
+  - [x] 3.11 Write property tests for Day Phase and Voting (Properties 7, 8, 9, 21)
     - **Property 7: All Players Discussion Access** — All players (alive and dead) can send messages during day phase
     - **Property 8: Nomination Validity with Per-Day Limits** — Nomination accepted iff nominator alive, nominator hasn't nominated today, target hasn't been nominated today. Dead players cannot nominate.
     - **Property 9: Execution Threshold and About-To-Die Tracking** — Threshold is ceil(N/2), about_to_die tracked across multiple nominations, execution at end of day only, ties result in no execution
@@ -225,21 +225,21 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - **NOTE: Previously completed but needs MAJOR rewrite — Property 7 now includes dead players, Property 8 now has per-day limits, Property 9 completely changed to about-to-die + ceil threshold**
     - **Validates: Requirements 3.1, 3.3, 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.10, 4.11, 4.12**
 
-  - [ ]* 3.12 Write property test for Demon Bluffs (Property 22)
+  - [x] 3.12 Write property test for Demon Bluffs (Property 22)
     - **Property 22: Demon Bluffs**
     - Test that for games with 7+ players, the Demon receives exactly 3 not-in-play good character names as bluffs
     - Each bluff must be a good-aligned role from the Script that is not assigned to any player in the game
     - For games with <7 players, no bluffs are distributed
     - **Validates: Requirements 1.9**
 
-  - [ ] 3.13 Implement Win Condition Detection
+  - [x] 3.13 Implement Win Condition Detection
     - Implement `check_win_condition(session)` that checks after each execution and night phase
     - Detect Good victory when Demon is executed
     - Detect Evil victory when only 2 living players remain and one is the Demon
     - Return `GameResult` with winning team, reason, and role reveals
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ] 3.14 Write unit tests for Win Condition Detection
+  - [x] 3.14 Write unit tests for Win Condition Detection
     - Test Good wins when Demon is executed
     - Test Evil wins when 2 players remain and Demon is alive
     - Test no win when 3+ players remain
@@ -247,7 +247,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Test GameResult includes correct winning team, reason, and role reveals
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ]* 3.15 Write property tests for Win Conditions (Properties 10, 11)
+  - [x] 3.15 Write property tests for Win Conditions (Properties 10, 11)
     - **Property 10: Good Victory on Demon Execution** — Demon executed → Good wins
     - **Property 11: Evil Victory at Two Players** — 2 alive with Demon → Evil wins
     - **Validates: Requirements 5.1, 5.2**
