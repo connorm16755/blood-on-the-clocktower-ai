@@ -236,7 +236,7 @@ class GameEngine:
 
         # Clear poison from all players (poison resets each night)
         for player in grimoire.players:
-            player.is_poisoned = False
+            player.poisoned_by = None
 
         # Clear pending kills from previous night
         self._pending_night_kills = []
@@ -284,7 +284,7 @@ class GameEngine:
 
         If the acting player is dead, the action is a no-op.
         For "kill" actions (Demon): adds the target to pending deaths.
-        For "poison" actions (Poisoner): sets target's is_poisoned flag.
+        For "poison" actions (Poisoner): sets target's poisoned_by to the acting player's id.
         For "choose_master" actions (Butler): stores the butler's master choice.
 
         Args:
@@ -317,11 +317,11 @@ class GameEngine:
             return NightActionResult(player_id=player_id, success=True)
 
         elif action_type == "poison":
-            # Poisoner: set target's is_poisoned flag
+            # Poisoner: set target's poisoned_by to track the source
             if action.target_id:
                 target = self._find_player(grimoire, action.target_id)
                 if target and target.status == PlayerStatus.ALIVE:
-                    target.is_poisoned = True
+                    target.poisoned_by = player_id
             return NightActionResult(player_id=player_id, success=True)
 
         elif action_type == "choose_master":
@@ -356,6 +356,12 @@ class GameEngine:
                 target.status = PlayerStatus.DEAD
                 target.has_vote_token = True
                 deaths.append(target_id)
+
+                # If the dying player is a poison source, immediately lift
+                # only their active poison from affected players (Requirement 11.5)
+                for player in grimoire.players:
+                    if player.poisoned_by == target_id:
+                        player.poisoned_by = None
 
         # Store deaths in grimoire
         grimoire.night_deaths = deaths
@@ -670,10 +676,10 @@ class GameEngine:
             target.has_vote_token = True
             grimoire.execution_today = True
 
-            # If the executed player is the Poisoner, lift active poison
-            if target.role and target.role.name.lower() == "poisoner":
-                for player in grimoire.players:
-                    player.is_poisoned = False
+            # If the executed player is a poison source, lift their active poison
+            for player in grimoire.players:
+                if player.poisoned_by == executed_id:
+                    player.poisoned_by = None
 
         return executed_id
 

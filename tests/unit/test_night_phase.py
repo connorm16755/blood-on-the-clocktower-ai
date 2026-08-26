@@ -1,6 +1,7 @@
 """Unit tests for the Night Phase execution in the GameEngine."""
 
 import pytest
+from typing import Optional
 
 from game_engine.engine import GameEngine
 from game_engine.storyteller import generate_info_for_role
@@ -49,14 +50,14 @@ def _make_player(
     role_type: RoleType,
     team: Team,
     status: PlayerStatus = PlayerStatus.ALIVE,
-    is_poisoned: bool = False,
+    poisoned_by: Optional[str] = None,
 ) -> Player:
     """Create a Player with a role for testing."""
     p = Player(name=name)
     p.role = _make_role(role_name, role_type, team)
     p.team = team
     p.status = status
-    p.is_poisoned = is_poisoned
+    p.poisoned_by = poisoned_by
     return p
 
 
@@ -122,15 +123,16 @@ class TestBeginNightPhase:
         assert session.grimoire.night_deaths == []
 
     def test_clears_poison_flags(self, engine: GameEngine):
-        """begin_night_phase should clear is_poisoned from all players."""
+        """begin_night_phase should clear poisoned_by from all players."""
         session = engine.create_game("trouble_brewing", 5, "Human")
         # Poison a player before the night begins
-        session.grimoire.players[0].is_poisoned = True
+        session.grimoire.players[0].poisoned_by = "some_poisoner_id"
 
         engine.begin_night_phase(session)
 
         for player in session.grimoire.players:
             assert player.is_poisoned is False
+            assert player.poisoned_by is None
 
     def test_clears_pending_kills(self, engine: GameEngine):
         """begin_night_phase should clear pending kills from previous night."""

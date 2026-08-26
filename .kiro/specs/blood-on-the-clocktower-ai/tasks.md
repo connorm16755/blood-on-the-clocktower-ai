@@ -253,7 +253,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - **Validates: Requirements 5.1, 5.2**
 
 - [ ] 4. Implement special role mechanics
-  - [ ] 4.1 Implement Poisoner night ability
+  - [x] 4.1 Implement Poisoner night ability
     - In night phase processing, prompt Poisoner to select a target
     - Set `is_poisoned` on the target player; clear previous poison at start of each night
     - If Poisoner is dead, skip their action

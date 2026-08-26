@@ -19,6 +19,9 @@ from models.game import (
 )
 
 
+from typing import Optional
+
+
 def _make_role(name: str, role_type: RoleType, team: Team) -> RoleDefinition:
     """Helper to create a minimal RoleDefinition."""
     return RoleDefinition(
@@ -39,14 +42,14 @@ def _make_player(
     role_name: str,
     role_type: RoleType,
     team: Team,
-    is_poisoned: bool = False,
+    poisoned_by: Optional[str] = None,
     status: PlayerStatus = PlayerStatus.ALIVE,
 ) -> Player:
     """Helper to create a Player with a role."""
     p = Player(name=name)
     p.role = _make_role(role_name, role_type, team)
     p.team = team
-    p.is_poisoned = is_poisoned
+    p.poisoned_by = poisoned_by
     p.status = status
     return p
 
@@ -131,7 +134,7 @@ class TestWasherwomanInfo:
         """Poisoned Washerwoman may give incorrect information."""
         washerwoman = _make_player(
             "Alice", "Washerwoman", RoleType.TOWNSFOLK, Team.GOOD,
-            is_poisoned=True,
+            poisoned_by="poisoner_id",
         )
         chef = _make_player("Bob", "Chef", RoleType.TOWNSFOLK, Team.GOOD)
         poisoner = _make_player(
@@ -202,7 +205,7 @@ class TestLibrarianInfo:
         """Poisoned Librarian may give false information."""
         librarian = _make_player(
             "Alice", "Librarian", RoleType.TOWNSFOLK, Team.GOOD,
-            is_poisoned=True,
+            poisoned_by="poisoner_id",
         )
         butler = _make_player("Bob", "Butler", RoleType.OUTSIDER, Team.GOOD)
         poisoner = _make_player(
@@ -280,7 +283,7 @@ class TestInvestigatorInfo:
         """Poisoned Investigator may give false information."""
         investigator = _make_player(
             "Alice", "Investigator", RoleType.TOWNSFOLK, Team.GOOD,
-            is_poisoned=True,
+            poisoned_by="poisoner_id",
         )
         chef = _make_player("Bob", "Chef", RoleType.TOWNSFOLK, Team.GOOD)
         poisoner = _make_player(
@@ -376,7 +379,7 @@ class TestChefInfo:
         """Poisoned Chef gets a random count (0-2)."""
         chef = _make_player(
             "Alice", "Chef", RoleType.TOWNSFOLK, Team.GOOD,
-            is_poisoned=True,
+            poisoned_by="poisoner_id",
         )
         poisoner = _make_player(
             "Bob", "Poisoner", RoleType.MINION, Team.EVIL
@@ -492,7 +495,7 @@ class TestEmpathInfo:
         chef = _make_player("Alice", "Chef", RoleType.TOWNSFOLK, Team.GOOD)
         empath = _make_player(
             "Bob", "Empath", RoleType.TOWNSFOLK, Team.GOOD,
-            is_poisoned=True,
+            poisoned_by="poisoner_id",
         )
         librarian = _make_player(
             "Charlie", "Librarian", RoleType.TOWNSFOLK, Team.GOOD

@@ -68,10 +68,15 @@ class Player:
     team: Optional[Team] = None
     status: PlayerStatus = PlayerStatus.ALIVE
     is_human: bool = False
-    is_poisoned: bool = False
+    poisoned_by: Optional[str] = None  # player_id of the poisoner (None = not poisoned)
     used_ability: bool = False  # For one-shot abilities like Slayer
     has_vote_token: bool = False  # Dead players receive one vote token upon death
     evil_knowledge: dict = field(default_factory=dict)  # Evil team info: {"demon_id": ...} or {"minion_ids": [...], "bluffs": [...]}
+
+    @property
+    def is_poisoned(self) -> bool:
+        """Whether this player is currently poisoned (by any source)."""
+        return self.poisoned_by is not None
 
 
 @dataclass

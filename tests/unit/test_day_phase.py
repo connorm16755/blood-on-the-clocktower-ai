@@ -468,7 +468,7 @@ class TestEndDayPhase:
 
         # Poison someone
         victim = next(p for p in players if p.id != poisoner.id)
-        victim.is_poisoned = True
+        victim.poisoned_by = poisoner.id
 
         # Set up about_to_die to be the poisoner
         session.grimoire.about_to_die_player_id = poisoner.id
@@ -478,3 +478,4 @@ class TestEndDayPhase:
 
         # Poison should be lifted
         assert victim.is_poisoned is False
+        assert victim.poisoned_by is None
