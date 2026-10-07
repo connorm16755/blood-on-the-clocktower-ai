@@ -261,7 +261,7 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - When Poisoner dies (any cause — night kill, execution, Slayer), immediately lift active poison from affected player
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
-  - [ ] 4.2 Write unit tests for Poisoner
+  - [x] 4.2 Write unit tests for Poisoner
     - Test Poisoner can select a living target and that target becomes poisoned
     - Test previous poison is cleared at start of new night
     - Test dead Poisoner's action is skipped
@@ -272,12 +272,12 @@ This plan implements an AI-powered Blood on the Clocktower game with a Python/Fa
     - Test Poisoner death (Slayer shot) immediately lifts active poison
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
-  - [ ]* 4.3 Write property tests for Poisoner (Properties 14, 15)
+  - [x] 4.3 Write property tests for Poisoner (Properties 14, 15)
     - **Property 14: Poison Effect on Information** — Poisoned info-gathering roles get unreliable info
     - **Property 15: Poison Lifecycle Reset and Death Lift** — Poison cleared between consecutive nights AND poison lifts immediately on Poisoner death (any cause)
     - **Validates: Requirements 11.2, 11.3, 11.5**
 
-  - [ ] 4.4 Implement Slayer day ability
+  - [x] 4.4 Implement Slayer day ability
     - Implement `use_day_ability(session, player_id, target_id)` for the Slayer
     - If target is the Demon, kill the Demon immediately and check win condition
     - If target is not the Demon, announce nothing happens

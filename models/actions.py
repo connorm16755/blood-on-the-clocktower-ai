@@ -38,6 +38,17 @@ class NightSummary:
 
 
 @dataclass
+class DayAbilityResult:
+    """Result of a day ability use (e.g., the Slayer's shot)."""
+
+    player_id: str  # The player who used the ability
+    target_id: str  # The targeted player
+    success: bool  # Whether the ability was used (not rejected)
+    killed: bool = False  # Whether the target was killed by the ability
+    announcement: str = ""  # Public announcement describing the outcome
+
+
+@dataclass
 class Message:
     """A message sent during day discussion."""
 

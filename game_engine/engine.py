@@ -8,6 +8,7 @@ import time
 from typing import Optional
 
 from game_engine.exceptions import (
+    AbilityExhaustedError,
     DeadPlayerActionError,
     InvalidPhaseError,
     InvalidPlayerCountError,
@@ -16,7 +17,14 @@ from game_engine.exceptions import (
     NominationLimitError,
 )
 
-from models.actions import Message, NightAction, NightActionResult, Nomination, NightSummary
+from models.actions import (
+    DayAbilityResult,
+    Message,
+    NightAction,
+    NightActionResult,
+    Nomination,
+    NightSummary,
+)
 from models.game import (
     GamePhase,
     GameResult,
@@ -682,6 +690,109 @@ class GameEngine:
                     player.poisoned_by = None
 
         return executed_id
+
+    def use_day_ability(
+        self, session: GameSession, player_id: str, target_id: str
+    ) -> DayAbilityResult:
+        """Handle a day ability like the Slayer's shot.
+
+        The Slayer may use their ability once per game during the day to
+        target a player:
+        - If the target is the Demon, the Demon is killed immediately
+          (marked DEAD, granted a Vote_Token). If the slain Demon was also a
+          poison source, their active poison is lifted. The win condition is
+          then checked.
+        - If the target is not the Demon, nothing happens.
+
+        Regardless of hit or miss, the Slayer's ability is marked as used
+        (`used_ability = True`) and any further use is rejected.
+
+        Args:
+            session: The current game session.
+            player_id: The ID of the player using the ability (the Slayer).
+            target_id: The ID of the targeted player.
+
+        Returns:
+            A DayAbilityResult describing the outcome.
+
+        Raises:
+            InvalidPhaseError: If the game is not in the DAY phase.
+            DeadPlayerActionError: If the acting player is dead.
+            AbilityExhaustedError: If the ability has already been used.
+            InvalidTargetError: If the acting player or target is not found.
+        """
+        grimoire = session.grimoire
+
+        # Validate phase
+        if grimoire.phase != GamePhase.DAY:
+            raise InvalidPhaseError(
+                "Day abilities can only be used during the day phase."
+            )
+
+        # Validate acting player exists
+        actor = self._find_player(grimoire, player_id)
+        if actor is None:
+            raise InvalidTargetError(
+                f"Player with id '{player_id}' not found."
+            )
+
+        # Dead players cannot use day abilities
+        if actor.status != PlayerStatus.ALIVE:
+            raise DeadPlayerActionError(
+                "Dead players cannot use day abilities."
+            )
+
+        # Reject use of an already-exhausted ability
+        if actor.used_ability:
+            raise AbilityExhaustedError(
+                "This ability has already been used and cannot be used again."
+            )
+
+        # Validate target exists
+        target = self._find_player(grimoire, target_id)
+        if target is None:
+            raise InvalidTargetError(
+                f"Target with id '{target_id}' not found."
+            )
+
+        # Mark the ability as used regardless of the outcome (one-shot)
+        actor.used_ability = True
+
+        # Determine if the target is the Demon
+        is_demon = (
+            target.role is not None
+            and target.role.role_type == RoleType.DEMON
+        )
+
+        # Miss: target is not the Demon (or is already dead) — nothing happens
+        if not is_demon or target.status != PlayerStatus.ALIVE:
+            return DayAbilityResult(
+                player_id=player_id,
+                target_id=target_id,
+                success=True,
+                killed=False,
+                announcement="Nothing happens.",
+            )
+
+        # Hit: the Demon dies immediately
+        target.status = PlayerStatus.DEAD
+        target.has_vote_token = True
+
+        # If the slain Demon was also a poison source, lift their active poison
+        for player in grimoire.players:
+            if player.poisoned_by == target_id:
+                player.poisoned_by = None
+
+        # Trigger win condition check now that the Demon has died
+        self.check_win_condition(session)
+
+        return DayAbilityResult(
+            player_id=player_id,
+            target_id=target_id,
+            success=True,
+            killed=True,
+            announcement="The Demon has been slain.",
+        )
 
     def check_win_condition(
         self, session: GameSession

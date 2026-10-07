@@ -17,6 +17,10 @@ class InvalidTargetError(Exception):
     """Raised when an action targets an invalid player (e.g., dead target, Butler self-master)."""
 
 
+class AbilityExhaustedError(Exception):
+    """Raised when a player attempts to use a one-shot ability that has already been used (e.g., the Slayer's shot)."""
+
+
 class NominationError(Exception):
     """Raised when a nomination is invalid (e.g., already executed today, nomination not found)."""
 
